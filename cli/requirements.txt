@@ -1,0 +1,6 @@
+async-timeout==4.0.2
+Deprecated==1.2.13
+packaging==21.3
+pyparsing==3.0.9
+redis==4.3.4
+wrapt==1.14.1

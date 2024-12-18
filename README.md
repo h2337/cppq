@@ -25,7 +25,7 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 - [ ] Timeout and deadline per task
 - [x] Ability to pause queue to stop processing tasks from the queue
 - [x] Web UI to inspect and control queues and tasks
-- [ ] CLI to inspect and control queues and tasks
+- [x] CLI to inspect and control queues and tasks
 
 ## Quickstart
 
@@ -131,6 +131,26 @@ If you are on Linux then web UI can be started by running: `cd web && ./start.sh
 Web UI is made with React/TypeScript and Flask/Python. It is still work-in-progress.
 
 ![Web UI demo](https://github.com/jafarlihi/file-hosting/blob/0c98fb2b0d18503364acc5d731a41da604126985/cppq-web-demo-2.gif?raw=true)
+
+## CLI
+
+CLI can be run with: `cd cli && pip3 install -r requirements && python3 main.py`
+
+CLI is made with Python. It is still work-in-progress.
+
+```
+usage: main.py [-h] [--redis_uri REDIS_URI] [--queues] [--stats QUEUE] [--list QUEUE STATE] [--task QUEUE UUID]
+
+cppq CLI
+
+options:
+  -h, --help            show this help message and exit
+  --redis_uri REDIS_URI
+  --queues              Print queues, priorities, and pause status
+  --stats QUEUE         Print queue statistics
+  --list QUEUE STATE    List task UUIDs in queue
+  --task QUEUE UUID     Get task details
+```
 
 ## License
 

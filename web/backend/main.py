@@ -8,6 +8,7 @@ CORS(app)
 
 redisClient = redis.Redis()
 
+
 def decode_redis(src):
     if isinstance(src, list):
         rv = list()
@@ -23,6 +24,7 @@ def decode_redis(src):
         return src.decode()
     else:
         raise Exception("type not handled: " + type(src))
+
 
 @app.route('/redis/connect', methods = ['POST', 'GET'])
 def connect():
@@ -42,9 +44,11 @@ def connect():
             return { 'connected': False }
     return {}
 
+
 @app.route('/redis/llen/<key>', methods = ['GET'])
 def listLength(key):
     return { 'result': redisClient.llen(key) }
+
 
 @app.route('/redis/llrangeAll/<key>', methods = ['GET'])
 def llrangeAll(key):
@@ -60,6 +64,7 @@ def getMemoryUsage(queue):
     failed = redisClient.memory_usage('cppq:' + queue + ':failed') or 0
     return { 'result': pending + scheduled + active + completed + failed }
 
+
 @app.route('/queue/<queue>/stats', methods = ['GET'])
 def queueStats(queue):
     pending = redisClient.llen('cppq:' + queue + ':pending')
@@ -70,6 +75,7 @@ def queueStats(queue):
     paused = redisClient.sismember('cppq:queues:paused', queue);
     return { 'pending': pending, 'scheduled': scheduled, 'active': active, 'completed': completed, 'failed': failed, 'paused': paused }
 
+
 @app.route('/queue/<queue>/<state>/tasks', methods = ['GET'])
 def queueTasks(queue, state):
     taskUuids = [x.decode('ascii') for x in redisClient.lrange('cppq:' + queue + ':' + state, 0, -1)]
@@ -78,15 +84,18 @@ def queueTasks(queue, state):
         tasks.append(decode_redis(redisClient.hgetall('cppq:' + queue + ':task:' + uuid)))
     return { 'result': tasks }
 
+
 @app.route('/queue/<queue>/pause', methods = ['POST'])
 def pauseQueue(queue):
     redisClient.sadd('cppq:queues:paused', queue)
     return { 'success': True }
 
+
 @app.route('/queue/<queue>/unpause', methods = ['POST'])
 def unpauseQueue(queue):
     redisClient.srem('cppq:queues:paused', queue)
     return { 'success': True }
+
 
 @app.route('/queue', methods = ['GET'])
 def queues():
