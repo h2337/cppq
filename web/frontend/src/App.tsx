@@ -68,7 +68,7 @@ function App() {
         });
     }
     fetchConnection();
-  }, []);
+  }, [location.pathname, navigate]);
 
   const onConnectClick = async () => {
     setError(null);
