@@ -166,6 +166,7 @@ namespace cppq {
         this->retried = 0;
         this->dequeuedAtMs = 0;
       }
+
       Task(
           std::string uuid,
           std::string type,
@@ -189,6 +190,7 @@ namespace cppq {
         this->schedule = schedule;
         this->cron = cron;
       }
+
       uuid_t uuid;
       std::string type;
       std::string payload;
