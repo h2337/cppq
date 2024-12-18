@@ -23,7 +23,7 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 - [x] Scheduling of tasks
 - [ ] Periodic tasks
 - [ ] Timeout and deadline per task
-- [ ] Ability to pause queue to stop processing tasks from the queue
+- [x] Ability to pause queue to stop processing tasks from the queue
 - [x] Web UI to inspect and control queues and tasks
 - [ ] CLI to inspect and control queues and tasks
 
@@ -110,6 +110,11 @@ int main(int argc, char *argv[]) {
     "default",
     cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1))
   );
+
+  // Pause queue to stop processing tasks from it
+  cppq::pause(c, "default");
+  // Unpause queue to continue processing tasks from it
+  cppq::unpause(c, "default");
 
   // This call will loop forever checking the pending queue and processing tasks in the thread pool.
   // Second argument defines queues and their priorities.
