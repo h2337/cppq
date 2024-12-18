@@ -1,3 +1,36 @@
+# cppq
+
+cppq is a simple, reliable & efficient distributed task queue for C++17.
+
+cppq is a C++ library for queueing tasks and processing them asynchronously with workers. It's backed by Redis and is designed to be scalable yet easy to get started.
+
+Highlevel overview of how cppq works:
+
+- Client puts tasks on a queue
+- Server pulls tasks off queues and starts a thread for each task
+- Tasks are processed concurrently by multiple workers
+
+Task queues are used as a mechanism to distribute work across multiple machines. A system can consist of multiple worker servers and brokers, giving way to high availability and horizontal scaling.
+
+## Features
+- Guaranteed at least one execution of a task
+- Retries of failed tasks
+- Automatic recovery of tasks in the event of a worker crash
+- Low latency to add a task since writes are fast in Redis
+
+## Quickstart
+
+cppq is a header-only library with 2 dependecies: `libuuid` and `hiredis`.
+
+Just include the header: `#include "cppq.h"` and add these flags to your build "-luuid -lhiredis".
+
+`libuuid` and `hiredis` can be installed using your distro's package manager.
+
+For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs`
+
+## Example
+
+```c++
 #include "cppq.hpp"
 
 const std::string TypeEmailDelivery = "email:deliver";
@@ -82,3 +115,4 @@ int main(int argc, char *argv[]) {
     std::cout << task->result << std::endl;
   }
 }
+```
