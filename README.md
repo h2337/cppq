@@ -109,11 +109,6 @@ int main(int argc, char *argv[]) {
   // This call will not return
   // It will loop forever checking the pending queue and processing tasks in thread pool
   cppq::runServer(options, 1000000);
-
-  // Check task result
-  while (!task->result.contains("Sent")) {
-    std::cout << task->result << std::endl;
-  }
 }
 ```
 
