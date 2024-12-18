@@ -323,7 +323,7 @@ namespace cppq {
     redisFree(c);
   }
 
-  void recovery(redisOptions options, uint64_t timeoutMs) {
+  void recovery(redisOptions options, uint64_t timeoutMs, uint64_t checkEveryMs) {
     redisContext *c = redisConnectWithOptions(&options);
     if (c == NULL || c->err) {
       std::cerr << "Failed to connect to Redis" << std::endl;
@@ -331,7 +331,7 @@ namespace cppq {
     }
 
     while (true) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+      std::this_thread::sleep_for(std::chrono::milliseconds(checkEveryMs));
       redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active 0 -1");
       for (int i = 0; i < reply->elements; i++) {
         std::string uuid = reply->element[i]->str;
@@ -371,7 +371,7 @@ namespace cppq {
 
     thread_pool pool;
 
-    pool.push_task(recovery, options, recoveryTimeoutSecond * 1000);
+    pool.push_task(recovery, options, recoveryTimeoutSecond * 1000, 10000);
 
     while (true) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));

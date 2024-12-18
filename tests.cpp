@@ -28,7 +28,7 @@ void HandleEmailDeliveryTask(cppq::Task& task) {
   return;
 }
 
-void testDequeue() {
+void testEnqueue() {
   cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
 
   redisOptions options = {0};
@@ -40,41 +40,6 @@ void testDequeue() {
   }
 
   redisCommand(c, "FLUSHALL");
-
-  cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
-
-  cppq::enqueue(c, task);
-  std::optional<cppq::Task> dequeued = cppq::dequeue(c);
-
-  assert(dequeued.value().type.compare(TypeEmailDelivery) == 0);
-  assert(dequeued.value().payload["UserID"] == 666);
-  assert(dequeued.value().payload["TemplateID"].get<std::string>().compare("AH") == 0);
-  assert(dequeued.value().state == cppq::TaskState::Active);
-  assert(dequeued.value().maxRetry == 10);
-  assert(dequeued.value().retried == 0);
-  assert(dequeued.value().dequeuedAtMs != 0);
-
-  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active -1 -1");
-  if (reply->type != REDIS_REPLY_ARRAY)
-    assert(false);
-  if (reply->elements == 0)
-    assert(false);
-  reply = reply->element[0];
-  std::string uuid = reply->str;
-
-  assert(uuid.compare(cppq::uuidToString(dequeued.value().uuid)) == 0);
-}
-
-void testEnqueue() {
-  cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
-
-  redisOptions options = {0};
-  REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
-  redisContext *c = redisConnectWithOptions(&options);
-  if (c == NULL || c->err) {
-    std::cerr << "Failed to connect to Redis" << std::endl;
-    assert(false);
-  }
 
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
 
@@ -120,8 +85,84 @@ void testEnqueue() {
   assert(task.dequeuedAtMs == 0);
 }
 
+void testDequeue() {
+  cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
+
+  redisOptions options = {0};
+  REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
+  redisContext *c = redisConnectWithOptions(&options);
+  if (c == NULL || c->err) {
+    std::cerr << "Failed to connect to Redis" << std::endl;
+    assert(false);
+  }
+
+  redisCommand(c, "FLUSHALL");
+
+  cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
+
+  cppq::enqueue(c, task);
+  std::optional<cppq::Task> dequeued = cppq::dequeue(c);
+
+  assert(dequeued.value().type.compare(TypeEmailDelivery) == 0);
+  assert(dequeued.value().payload["UserID"] == 666);
+  assert(dequeued.value().payload["TemplateID"].get<std::string>().compare("AH") == 0);
+  assert(dequeued.value().state == cppq::TaskState::Active);
+  assert(dequeued.value().maxRetry == 10);
+  assert(dequeued.value().retried == 0);
+  assert(dequeued.value().dequeuedAtMs != 0);
+
+  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active -1 -1");
+  if (reply->type != REDIS_REPLY_ARRAY)
+    assert(false);
+  if (reply->elements == 0)
+    assert(false);
+  reply = reply->element[0];
+  std::string uuid = reply->str;
+
+  assert(uuid.compare(cppq::uuidToString(dequeued.value().uuid)) == 0);
+}
+
+void testRecovery() {
+  cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
+
+  redisOptions options = {0};
+  REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
+  redisContext *c = redisConnectWithOptions(&options);
+  if (c == NULL || c->err) {
+    std::cerr << "Failed to connect to Redis" << std::endl;
+    assert(false);
+  }
+
+  redisCommand(c, "FLUSHALL");
+
+  cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
+
+  cppq::enqueue(c, task);
+  std::optional<cppq::Task> dequeued = cppq::dequeue(c);
+
+  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active -1 -1");
+  if (reply->type != REDIS_REPLY_ARRAY)
+    assert(false);
+  if (reply->elements == 0)
+    assert(false);
+
+  cppq::thread_pool pool;
+  pool.push_task(cppq::recovery, options, 1, 10);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  reply = (redisReply *)redisCommand(c, "LRANGE cppq:pending -1 -1");
+  if (reply->type != REDIS_REPLY_ARRAY)
+    assert(false);
+  if (reply->elements == 0)
+    assert(false);
+
+  exit(0);
+}
+
 int main(int argc, char *argv[]) {
   testEnqueue();
   testDequeue();
+  testRecovery();
 }
 
