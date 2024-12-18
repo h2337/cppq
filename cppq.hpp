@@ -329,7 +329,8 @@ namespace cppq {
     reply = reply->element[0];
     std::string uuid = reply->str;
 
-    uint64_t dequeuedAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    uint64_t dequeuedAtMs =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
     redisCommand(c, "MULTI");
     redisCommand(c, "LREM cppq:%s:pending 1 %s", queue.c_str(), uuid.c_str());
@@ -366,7 +367,8 @@ namespace cppq {
       return {};
     std::string uuid = reply->str;
 
-    uint64_t dequeuedAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    uint64_t dequeuedAtMs =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
     redisCommand(c, "MULTI");
     redisCommand(c, "LREM cppq:%s:scheduled 1 %s", queue.c_str(), uuid.c_str());
@@ -538,7 +540,11 @@ namespace cppq {
 
     std::vector<std::pair<std::string, int>> queuesVector;
     for (auto& it : queues) queuesVector.push_back(it);
-    sort(queuesVector.begin(), queuesVector.end(), [](std::pair<std::string, int> const& a, std::pair<std::string, int> const& b) { return a.second > b.second; });
+    sort(
+        queuesVector.begin(),
+        queuesVector.end(),
+        [](std::pair<std::string, int> const& a, std::pair<std::string, int> const& b) { return a.second > b.second; }
+        );
 
     thread_pool pool;
     pool.push_task(recovery, redisOpts, queues, recoveryTimeoutSecond * 1000, 10000);
