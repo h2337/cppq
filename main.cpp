@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <hiredis/hiredis.h>
 #include <uuid/uuid.h>
+#include <chrono>
 
 const std::string TypeEmailDelivery = "email:deliver";
 const std::string TypeImageResize = "image:resize";
@@ -134,6 +135,8 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
   reply = reply->element[0];
   std::string uuid = reply->str;
 
+  uint64_t dequeuedAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
   redisCommand(c, "MULTI");
   redisCommand(c, "LREM cppq:pending 1 %s", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s type", uuid.c_str());
@@ -143,13 +146,14 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
   redisCommand(c, "HGET cppq:task:%s timeoutMs", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s retried", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s dequeuedAtMs", uuid.c_str());
+  redisCommand(c, "HSET cppq:task:%s dequeuedAtMs %d", uuid.c_str(), dequeuedAtMs);
   redisCommand(c, "LPUSH cppq:active %s", uuid.c_str());
   reply = (redisReply *)redisCommand(c, "EXEC");
 
-  if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 9)
+  if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 10)
     throw std::runtime_error("Failed to dequeue task");
 
-  std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, reply->element[4]->integer, reply->element[5]->integer, reply->element[6]->integer, reply->element[7]->integer);
+  std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, reply->element[4]->integer, reply->element[5]->integer, reply->element[6]->integer, dequeuedAtMs);
 
   assert(task->state == TaskState::Pending);
 
