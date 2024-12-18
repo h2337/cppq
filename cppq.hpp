@@ -61,8 +61,7 @@ namespace ThreadPool
     private:
       void create_threads() {
         running = true;
-        for (concurrency_t i = 0; i < thread_count; ++i)
-        {
+        for (concurrency_t i = 0; i < thread_count; ++i) {
           threads[i] = std::thread(&thread_pool_light::worker, this);
         }
       }
@@ -70,8 +69,7 @@ namespace ThreadPool
       void destroy_threads() {
         running = false;
         task_available_cv.notify_all();
-        for (concurrency_t i = 0; i < thread_count; ++i)
-        {
+        for (concurrency_t i = 0; i < thread_count; ++i) {
           threads[i].join();
         }
       }
@@ -79,8 +77,7 @@ namespace ThreadPool
       [[nodiscard]] concurrency_t determine_thread_count(const concurrency_t thread_count_) {
         if (thread_count_ > 0)
           return thread_count_;
-        else
-        {
+        else {
           if (std::thread::hardware_concurrency() > 0)
             return std::thread::hardware_concurrency();
           else
@@ -89,13 +86,11 @@ namespace ThreadPool
       }
 
       void worker() {
-        while (running)
-        {
+        while (running) {
           std::function<void()> task;
           std::unique_lock<std::mutex> tasks_lock(tasks_mutex);
           task_available_cv.wait(tasks_lock, [this] { return !tasks.empty() || !running; });
-          if (running)
-          {
+          if (running) {
             task = std::move(tasks.front());
             tasks.pop();
             tasks_lock.unlock();
