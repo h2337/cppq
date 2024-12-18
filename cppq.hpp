@@ -388,7 +388,10 @@ namespace cppq {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       for (std::vector<std::pair<std::string, int>>::iterator it = queuesVector.begin(); it != queuesVector.end(); it++) {
         std::optional<Task> task = dequeue(c, it->first);
-        if (task.has_value()) pool.push_task(taskRunner, redisOpts, task.value(), it->first);
+        if (task.has_value()) {
+          pool.push_task(taskRunner, redisOpts, task.value(), it->first);
+          break;
+        }
         else continue;
       }
     }
