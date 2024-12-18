@@ -38,8 +38,10 @@ int main(int argc, char *argv[]) {
   }
 
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
+  cppq::Task task2 = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 606, .TemplateID = "BH"});
 
-  cppq::enqueue(c, task);
+  cppq::enqueue(c, task, "default");
+  cppq::enqueue(c, task2, "high");
 
-  cppq::runServer(redisOpts, 1000);
+  cppq::runServer(redisOpts, {{"low", 5}, {"default", 10}, {"high", 20}}, 1000);
 }
