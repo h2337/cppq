@@ -24,7 +24,7 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 - [ ] Periodic tasks
 - [ ] Timeout and deadline per task
 - [ ] Ability to pause queue to stop processing tasks from the queue
-- [ ] Web UI to inspect and control queues and tasks
+- [x] Web UI to inspect and control queues and tasks
 - [ ] CLI to inspect and control queues and tasks
 
 ## Quickstart
@@ -118,6 +118,12 @@ int main(int argc, char *argv[]) {
   cppq::runServer(redisOpts, {{"low", 5}, {"default", 10}, {"high", 20}}, 1000);
 }
 ```
+
+## Web UI
+
+If you are on Linux then web UI can be started by running: `./web/start.sh`
+
+![Web UI demo](https://github.com/jafarlihi/file-hosting/blob/1bb913da5701a8ec13ba541bbfd3b413910f19d8/cppq-web-ui.gif?raw=true)
 
 ## License
 
