@@ -123,6 +123,8 @@ int main(int argc, char *argv[]) {
 
 If you are on Linux then web UI can be started by running: `./web/start.sh`
 
+Web UI is made with React/TypeScript and Flask/Python. It is still work-in-progress.
+
 ![Web UI demo](https://github.com/jafarlihi/file-hosting/blob/1bb913da5701a8ec13ba541bbfd3b413910f19d8/cppq-web-ui.gif?raw=true)
 
 ## License
