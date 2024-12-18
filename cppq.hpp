@@ -392,7 +392,6 @@ namespace cppq {
           pool.push_task(taskRunner, redisOpts, task.value(), it->first);
           break;
         }
-        else continue;
       }
     }
   }
