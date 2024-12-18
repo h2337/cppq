@@ -45,21 +45,25 @@ For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs nlohmann-json`
 
 const std::string TypeEmailDelivery = "email:deliver";
 
+// Define a payload type for your task
 typedef struct {
   int UserID;
   std::string TemplateID;
 } EmailDeliveryPayload;
 
+// Provide conversion to JSON
 void to_json(nlohmann::json& j, const EmailDeliveryPayload& p) {
   j = nlohmann::json{{"UserID", p.UserID}, {"TemplateID", p.TemplateID}};
 }
 
+// Helper function to create a new task with the given payload
 cppq::Task NewEmailDeliveryTask(EmailDeliveryPayload payload) {
   nlohmann::json j = payload;
   // "10" is maxRetry -- the number of times the task will be retried on exception
   return cppq::Task{TypeEmailDelivery, j, 10};
 }
 
+// The actual task code
 void HandleEmailDeliveryTask(cppq::Task& task) {
   // Fetch the parameters
   int userID = task.payload["UserID"];
