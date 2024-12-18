@@ -29,10 +29,9 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 - [x] Retries of failed tasks
 - [x] Automatic recovery of tasks in the event of a worker crash
 - [x] Low latency to add a task since writes are fast in Redis
-- [x] Weighted priority queues
+- [x] Queue priorities
 - [x] Scheduling of tasks
 - [ ] Periodic tasks
-- [ ] Timeout and deadline per task
 - [x] Ability to pause queue to stop processing tasks from the queue
 - [x] Web UI to inspect and control queues and tasks
 - [x] CLI to inspect and control queues and tasks
