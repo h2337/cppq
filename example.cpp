@@ -29,9 +29,9 @@ void HandleEmailDeliveryTask(cppq::Task& task) {
 int main(int argc, char *argv[]) {
   cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
 
-  redisOptions options = {0};
-  REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
-  redisContext *c = redisConnectWithOptions(&options);
+  redisOptions redisOpts = {0};
+  REDIS_OPTIONS_SET_TCP(&redisOpts, "127.0.0.1", 6379);
+  redisContext *c = redisConnectWithOptions(&redisOpts);
   if (c == NULL || c->err) {
     std::cerr << "Failed to connect to Redis" << std::endl;
     return 1;
@@ -41,5 +41,5 @@ int main(int argc, char *argv[]) {
 
   cppq::enqueue(c, task);
 
-  cppq::runServer(options, 1000);
+  cppq::runServer(redisOpts, 1000);
 }
