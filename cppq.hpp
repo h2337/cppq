@@ -259,8 +259,6 @@ namespace cppq {
       dequeuedAtMs
     );
 
-    assert(task.state == TaskState::Pending);
-
     return std::make_optional<Task>(task);
   }
 
