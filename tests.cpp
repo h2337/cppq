@@ -39,6 +39,8 @@ void testDequeue() {
     assert(false);
   }
 
+  redisCommand(c, "FLUSHALL");
+
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
 
   cppq::enqueue(c, task);
@@ -51,6 +53,16 @@ void testDequeue() {
   assert(dequeued.value().maxRetry == 10);
   assert(dequeued.value().retried == 0);
   assert(dequeued.value().dequeuedAtMs != 0);
+
+  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active -1 -1");
+  if (reply->type != REDIS_REPLY_ARRAY)
+    assert(false);
+  if (reply->elements == 0)
+    assert(false);
+  reply = reply->element[0];
+  std::string uuid = reply->str;
+
+  assert(uuid.compare(cppq::uuidToString(dequeued.value().uuid)) == 0);
 }
 
 void testEnqueue() {
