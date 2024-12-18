@@ -168,7 +168,7 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
 void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
   redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
-    std::cerr << "Faile to connect to Redis" << std::endl;
+    std::cerr << "Failed to connect to Redis" << std::endl;
     return;
   }
 
@@ -205,27 +205,10 @@ void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
   redisFree(c);
 }
 
-void runServer(redisOptions options) {
-  redisContext *c = redisConnectWithOptions(&options);
-  if (c == NULL || c->err) {
-    std::cerr << "Faile to connect to Redis" << std::endl;
-    return;
-  }
-
-  BS::thread_pool pool;
-
-  while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    std::shared_ptr<Task> task = dequeue(c);
-    if (task != nullptr)
-      pool.push_task(taskRunner, options, task);
-  }
-}
-
 void recovery(redisOptions options, uint64_t timeoutMs) {
   redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
-    std::cerr << "Faile to connect to Redis" << std::endl;
+    std::cerr << "Failed to connect to Redis" << std::endl;
     return;
   }
 
@@ -233,8 +216,36 @@ void recovery(redisOptions options, uint64_t timeoutMs) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10000));
     redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active 0 -1");
     for (int i = 0; i < reply->elements; i++) {
-      // if dequeuedAtMs + timeoutMs < now then put to pending queue
+      std::string uuid = reply->element[i]->str;
+      redisReply *dequeuedAtMsReply = (redisReply *)redisCommand(c, "HGET cppq:task:%s dequeuedAtMs", uuid.c_str());
+      uint64_t dequeuedAtMs = strtoull(dequeuedAtMsReply->str, NULL, 0);
+      if (dequeuedAtMs + timeoutMs < std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) {
+        redisCommand(c, "MULTI");
+        redisCommand(c, "LREM cppq:active 1 %s", uuid.c_str());
+        redisCommand(c, "HSET cppq:task:%s state %s", uuid.c_str(), stateToString(TaskState::Pending).c_str());
+        redisCommand(c, "LPUSH cppq:pending %s", uuid.c_str());
+        redisCommand(c, "EXEC");
+      }
     }
+  }
+}
+
+void runServer(redisOptions options, uint64_t recoveryTimeoutMs) {
+  redisContext *c = redisConnectWithOptions(&options);
+  if (c == NULL || c->err) {
+    std::cerr << "Failed to connect to Redis" << std::endl;
+    return;
+  }
+
+  BS::thread_pool pool;
+
+  pool.push_task(recovery, options, recoveryTimeoutMs);
+
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::shared_ptr<Task> task = dequeue(c);
+    if (task != nullptr)
+      pool.push_task(taskRunner, options, task);
   }
 }
 
@@ -247,12 +258,12 @@ int main(int argc, char *argv[]) {
 
   redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
-    std::cerr << "Faile to connect to Redis" << std::endl;
+    std::cerr << "Failed to connect to Redis" << std::endl;
     return 1;
   }
 
   std::shared_ptr<Task> task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
   enqueue(c, task);
 
-  runServer(options);
+  runServer(options, 1000000);
 }
