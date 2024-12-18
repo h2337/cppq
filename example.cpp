@@ -42,9 +42,11 @@ int main(int argc, char *argv[]) {
 
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
   cppq::Task task2 = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 606, .TemplateID = "BH"});
+  cppq::Task task3 = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "CH"});
 
   cppq::enqueue(c, task, "default");
   cppq::enqueue(c, task2, "high");
+  cppq::enqueue(c, task3, "default", cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1)));
 
   cppq::runServer(redisOpts, {{"low", 5}, {"default", 10}, {"high", 20}}, 1000);
 }

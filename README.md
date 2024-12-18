@@ -18,7 +18,7 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 - [x] Automatic recovery of tasks in the event of a worker crash
 - [x] Low latency to add a task since writes are fast in Redis
 - [x] Weighted priority queues
-- [ ] Scheduling of tasks
+- [x] Scheduling of tasks
 - [ ] Periodic tasks
 - [ ] Timeout and deadline per task
 - [ ] Ability to pause queue to stop processing tasks from the queue
@@ -91,11 +91,18 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Create a task
+  // Create tasks
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
+  cppq::Task task2 = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 606, .TemplateID = "BH"});
+  cppq::Task task3 = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "CH"});
 
-  // Enqueue the task on default queue
+  // Enqueue a task on default queue
   cppq::enqueue(c, task, "default");
+  // Enqueue a task on high priority queue
+  cppq::enqueue(c, task2, "high");
+  // Enqueue a task on default queue to be run at exactly 1 minute from now
+  cppq::enqueue(c, task3, "default", cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1)));
+
 
   // This call will loop forever checking the pending queue and processing tasks in the thread pool.
   // Second argument defines queues and their priorities.
