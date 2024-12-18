@@ -28,7 +28,7 @@ void HandleEmailDeliveryTask(cppq::Task& task) {
   return;
 }
 
-int main(int argc, char *argv[]) {
+void testDequeue() {
   cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
 
   redisOptions options = {0};
@@ -36,7 +36,32 @@ int main(int argc, char *argv[]) {
   redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
     std::cerr << "Failed to connect to Redis" << std::endl;
-    return 1;
+    assert(false);
+  }
+
+  cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
+
+  cppq::enqueue(c, task);
+  std::optional<cppq::Task> dequeued = cppq::dequeue(c);
+
+  assert(dequeued.value().type.compare(TypeEmailDelivery) == 0);
+  assert(dequeued.value().payload["UserID"] == 666);
+  assert(dequeued.value().payload["TemplateID"].get<std::string>().compare("AH") == 0);
+  assert(dequeued.value().state == cppq::TaskState::Active);
+  assert(dequeued.value().maxRetry == 10);
+  assert(dequeued.value().retried == 0);
+  assert(dequeued.value().dequeuedAtMs != 0);
+}
+
+void testEnqueue() {
+  cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
+
+  redisOptions options = {0};
+  REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
+  redisContext *c = redisConnectWithOptions(&options);
+  if (c == NULL || c->err) {
+    std::cerr << "Failed to connect to Redis" << std::endl;
+    assert(false);
   }
 
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
@@ -81,5 +106,10 @@ int main(int argc, char *argv[]) {
   assert(task.maxRetry == 10);
   assert(task.retried == 0);
   assert(task.dequeuedAtMs == 0);
+}
+
+int main(int argc, char *argv[]) {
+  testEnqueue();
+  testDequeue();
 }
 

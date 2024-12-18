@@ -243,17 +243,18 @@ namespace cppq {
     redisCommand(c, "HGET cppq:task:%s retried", uuid.c_str());
     redisCommand(c, "HGET cppq:task:%s dequeuedAtMs", uuid.c_str());
     redisCommand(c, "HSET cppq:task:%s dequeuedAtMs %lu", uuid.c_str(), dequeuedAtMs);
+    redisCommand(c, "HSET cppq:task:%s state %s", uuid.c_str(), stateToString(TaskState::Active).c_str());
     redisCommand(c, "LPUSH cppq:active %s", uuid.c_str());
     reply = (redisReply *)redisCommand(c, "EXEC");
 
-    if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 9)
+    if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 10)
       return {};
 
     Task task = Task(
       uuid,
       reply->element[1]->str,
       reply->element[2]->str,
-      reply->element[3]->str,
+      stateToString(TaskState::Active),
       strtoull(reply->element[4]->str, NULL, 0),
       strtoull(reply->element[5]->str, NULL, 0),
       dequeuedAtMs
