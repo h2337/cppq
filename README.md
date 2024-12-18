@@ -53,7 +53,7 @@ typedef struct {
   std::string TemplateID;
 } EmailDeliveryPayload;
 
-// Provide conversion to JSON
+// Provide conversion to JSON (optional, you can use any kind of payload)
 void to_json(nlohmann::json& j, const EmailDeliveryPayload& p) {
   j = nlohmann::json{{"UserID", p.UserID}, {"TemplateID", p.TemplateID}};
 }
