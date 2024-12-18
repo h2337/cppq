@@ -1,4 +1,6 @@
-# cppq
+<p align="center">
+  <img src="https://github.com/jafarlihi/file-hosting/blob/87315e66c91576a8098cd43fc169c52cad4d44bf/cppq.png">
+</p>
 
 cppq is a simple, reliable & efficient distributed task queue for C++17.
 
