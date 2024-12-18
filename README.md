@@ -148,17 +148,19 @@ CLI can be run with: `cd cli && pip3 install -r requirements && python3 main.py`
 CLI is made with Python. It is still work-in-progress.
 
 ```
-usage: main.py [-h] [--redis_uri REDIS_URI] [--queues] [--stats QUEUE] [--list QUEUE STATE] [--task QUEUE UUID]
+usage: main.py [-h] [--redis_uri REDIS_URI] [--queues] [--stats QUEUE] [--list QUEUE STATE] [--task QUEUE UUID] [--pause QUEUE] [--unpause QUEUE]
 
 cppq CLI
 
 options:
   -h, --help            show this help message and exit
   --redis_uri REDIS_URI
-  --queues              Print queues, priorities, and pause status
-  --stats QUEUE         Print queue statistics
-  --list QUEUE STATE    List task UUIDs in queue
-  --task QUEUE UUID     Get task details
+  --queues              print queues, priorities, and pause status
+  --stats QUEUE         print queue statistics
+  --list QUEUE STATE    list task UUIDs in queue
+  --task QUEUE UUID     get task details
+  --pause QUEUE         pause a queue
+  --unpause QUEUE       unpause a queue
 ```
 
 ## License

@@ -27,6 +27,8 @@ def main():
     parser.add_argument('--stats', dest='stats', metavar=('QUEUE'), help='print queue statistics')
     parser.add_argument('--list', type=str, nargs=2, help='list task UUIDs in queue', metavar=('QUEUE', 'STATE'))
     parser.add_argument('--task', type=str, nargs=2, help='get task details', metavar=('QUEUE', 'UUID'))
+    parser.add_argument('--pause', dest='pause', metavar=('QUEUE'), help='pause a queue')
+    parser.add_argument('--unpause', dest='unpause', metavar=('QUEUE'), help='unpause a queue')
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -65,6 +67,14 @@ def main():
     if args.task:
         queue, uuid = args.task
         return decode_redis(redisClient.hgetall('cppq:' + queue + ':task:' + uuid))
+
+    if args.pause:
+        redisClient.sadd('cppq:queues:paused', args.pause)
+        return args.pause
+
+    if args.unpause:
+        redisClient.srem('cppq:queues:paused', args.unpause)
+        return args.unpause
 
 
 if __name__ == '__main__':
