@@ -42,6 +42,7 @@ For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs`
 
 #include <nlohmann/json.hpp>
 
+// Specify task type name
 const std::string TypeEmailDelivery = "email:deliver";
 
 // Define a payload type for your task
