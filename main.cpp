@@ -155,7 +155,7 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
   redisCommand(c, "HGET cppq:task:%s timeoutMs", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s retried", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s dequeuedAtMs", uuid.c_str());
-  redisCommand(c, "HSET cppq:task:%s dequeuedAtMs %d", uuid.c_str(), dequeuedAtMs);
+  redisCommand(c, "HSET cppq:task:%s dequeuedAtMs %lu", uuid.c_str(), dequeuedAtMs);
   redisCommand(c, "LPUSH cppq:active %s", uuid.c_str());
   reply = (redisReply *)redisCommand(c, "EXEC");
 
