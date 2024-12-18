@@ -12,7 +12,13 @@ function Queue(props: { refetch: Date }) {
       await fetch('http://localhost:5000/queue/' + name + '/' + currentTab + '/tasks', { method: 'GET' })
         .then((response) => response.json())
         .then(async (body) => {
-          setTasks(body.result);
+          setTasks(body.result.map((e: any) => {
+            if (e.schedule)
+              e.schedule = new Date(Number(e.schedule)).toISOString();
+            if (e.dequeuedAtMs)
+              e.dequeuedAt = new Date(Number(e.dequeuedAtMs)).toString();
+            return e;
+          }));
         });
     }
     fetchQueues();
