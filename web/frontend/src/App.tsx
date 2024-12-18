@@ -52,7 +52,6 @@ function App() {
   const [redisURI, setRedisURI] = useState('');
   const [error, setError] = useState(null);
   const [refetch, setRefetch] = useState(new Date());
-  //const [refetchInterval, setRefetchInterval] = useState<ReturnType<typeof setInterval> | undefined>(undefined);
   const refetchInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   let refetchInit = useRef(false);
   const navigate = useNavigate();
@@ -126,7 +125,7 @@ function App() {
       </Header>
       <Routes>
         <Route path="/" element={RedisLogin()} />
-        <Route path="/dashboard" element={Dashboard({ refetch })} />
+        <Route path="/dashboard" element={Dashboard({ refetch, setRefetch })} />
         <Route path="/queue/:name" element={<Queue refetch={{...refetch}} />} />
       </Routes>
     </div>
