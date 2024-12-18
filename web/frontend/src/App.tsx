@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input, Button, InputNumber } from 'antd';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import logo from './cppq.png';
 import Dashboard from './Dashboard';
@@ -56,13 +56,14 @@ function App() {
   const refetchInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   let refetchInit = useRef(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     async function fetchConnection() {
       await fetch('http://localhost:5000/redis/connect', { method: 'GET' })
         .then((response) => response.json())
         .then((body) => {
-          if (body.connected)
+          if (body.connected && location.pathname === '/')
             navigate('/dashboard');
         });
     }
@@ -91,7 +92,7 @@ function App() {
   useEffect(() => {
     if (!refetchInit.current && refetchInterval.current === undefined) {
       refetchInit.current = true;
-      onUpdateIntervalChange(5);
+      onUpdateIntervalChange(10);
     }
   }, [refetchInterval, onUpdateIntervalChange]);
 
@@ -119,14 +120,14 @@ function App() {
           </div>
           <div style={{ float: 'right' }}>
             <span style={{ marginRight: '10px' }}>Update interval (seconds):</span>
-            <InputNumber min={1} max={10000} defaultValue={5} onChange={onUpdateIntervalChange} />
+            <InputNumber min={1} max={10000} defaultValue={10} onChange={onUpdateIntervalChange} />
           </div>
         </header>
       </Header>
       <Routes>
         <Route path="/" element={RedisLogin()} />
         <Route path="/dashboard" element={Dashboard({ refetch })} />
-        <Route path="/queue/:name" element={<Queue />} />
+        <Route path="/queue/:name" element={<Queue refetch={{...refetch}} />} />
       </Routes>
     </div>
   );
