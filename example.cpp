@@ -20,17 +20,17 @@ void to_json(nlohmann::json& j, const ImageResizePayload& p) {
   j = nlohmann::json{{"SourceURL", p.SourceURL}};
 }
 
-std::shared_ptr<Task> NewEmailDeliveryTask(EmailDeliveryPayload payload) {
+std::shared_ptr<cppq::Task> NewEmailDeliveryTask(EmailDeliveryPayload payload) {
   nlohmann::json j = payload;
-  return std::make_shared<Task>(TypeEmailDelivery, j, 10);
+  return std::make_shared<cppq::Task>(TypeEmailDelivery, j, 10);
 }
 
-std::shared_ptr<Task> NewImageResizeTask(ImageResizePayload payload) {
+std::shared_ptr<cppq::Task> NewImageResizeTask(ImageResizePayload payload) {
   nlohmann::json j = payload;
-  return std::make_shared<Task>(TypeImageResize, j, 10);
+  return std::make_shared<cppq::Task>(TypeImageResize, j, 10);
 }
 
-void HandleEmailDeliveryTask(std::shared_ptr<Task> task) {
+void HandleEmailDeliveryTask(std::shared_ptr<cppq::Task> task) {
   int userID = task->payload["UserID"];
   std::string templateID = task->payload["TemplateID"];
   nlohmann::json r;
@@ -40,13 +40,13 @@ void HandleEmailDeliveryTask(std::shared_ptr<Task> task) {
   return;
 }
 
-void HandleImageResizeTask(std::shared_ptr<Task> task) {
+void HandleImageResizeTask(std::shared_ptr<cppq::Task> task) {
   return;
 }
 
 int main(int argc, char *argv[]) {
-  handlers[TypeEmailDelivery] = &HandleEmailDeliveryTask;
-  handlers[TypeImageResize] = &HandleImageResizeTask;
+  cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
+  cppq::registerHandler(TypeImageResize, &HandleImageResizeTask);
 
   redisOptions options = {0};
   REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
@@ -57,8 +57,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  std::shared_ptr<Task> task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
-  enqueue(c, task);
+  std::shared_ptr<cppq::Task> task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
+  cppq::enqueue(c, task);
 
-  runServer(options, 1000000);
+  cppq::runServer(options, 1000000);
 }
