@@ -130,7 +130,7 @@ If you are on Linux then web UI can be started by running: `cd web && ./start.sh
 
 Web UI is made with React/TypeScript and Flask/Python. It is still work-in-progress.
 
-![Web UI demo](https://github.com/jafarlihi/file-hosting/blob/1bb913da5701a8ec13ba541bbfd3b413910f19d8/cppq-web-ui.gif?raw=true)
+![Web UI demo](https://github.com/jafarlihi/file-hosting/blob/0c98fb2b0d18503364acc5d731a41da604126985/cppq-web-demo-2.gif?raw=true)
 
 ## License
 
