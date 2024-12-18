@@ -24,7 +24,7 @@ cppq is a header-only library with 3 dependecies: `libuuid`, `hiredis`, `nlohman
 
 Just include the header: `#include "cppq.h"` and add these flags to your build `-luuid -lhiredis`.
 
-`libuuid` and `hiredis` can be installed using your distro's package manager.
+`libuuid`, `hiredis` and `nlohmann_json` can be installed using your distro's package manager.
 
 For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs nlohmann-json`
 
