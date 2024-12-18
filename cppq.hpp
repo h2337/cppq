@@ -18,7 +18,6 @@
 #include <optional>
 #include <map>
 
-#include <nlohmann/json.hpp>
 #include <hiredis/hiredis.h>
 #include <uuid/uuid.h>
 
@@ -155,7 +154,7 @@ namespace cppq {
 
   class Task {
     public:
-      Task(std::string type, nlohmann::json payload, uint64_t maxRetry) {
+      Task(std::string type, std::string payload, uint64_t maxRetry) {
         uuid_generate(this->uuid);
         this->type = type;
         this->payload = payload;
@@ -177,7 +176,7 @@ namespace cppq {
         uuid_parse(uuid.c_str(), uuid_parsed);
         uuid_copy(this->uuid, uuid_parsed);
         this->type = type;
-        this->payload = nlohmann::json::parse(payload);
+        this->payload = payload;
         this->maxRetry = maxRetry;
         this->retried = retried;
         this->dequeuedAtMs = dequeuedAtMs;
@@ -185,12 +184,12 @@ namespace cppq {
       }
       uuid_t uuid;
       std::string type;
-      nlohmann::json payload;
+      std::string payload;
       TaskState state;
       uint64_t maxRetry;
       uint64_t retried;
       uint64_t dequeuedAtMs;
-      nlohmann::json result;
+      std::string result;
   };
 
   using Handler = void (*)(Task&);
@@ -211,7 +210,7 @@ namespace cppq {
         queue.c_str(),
         uuidToString(task.uuid).c_str(),
         task.type.c_str(),
-        task.payload.dump().c_str(),
+        task.payload.c_str(),
         stateToString(task.state).c_str(),
         task.maxRetry,
         task.retried,
@@ -320,7 +319,7 @@ namespace cppq {
         "HSET cppq:%s:task:%s result %s",
         queue.c_str(),
         uuidToString(task.uuid).c_str(),
-        task.result.dump().c_str()
+        task.result.c_str()
         );
     redisCommand(c, "LPUSH cppq:%s:completed %s", queue.c_str(), uuidToString(task.uuid).c_str());
     redisCommand(c, "EXEC");

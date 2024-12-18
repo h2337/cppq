@@ -1,8 +1,5 @@
 # cppq
 
-**Warning**
-cppq is still alpha and stability is not guaranteed.
-
 cppq is a simple, reliable & efficient distributed task queue for C++17.
 
 cppq is a C++ library for queueing tasks and processing them asynchronously with workers. It's backed by Redis and is designed to be scalable yet easy to get started.
@@ -30,18 +27,20 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 
 ## Quickstart
 
-cppq is a header-only library with 3 dependencies: `libuuid`, `hiredis`, `nlohmann_json`.
+cppq is a header-only library with 2 dependencies: `libuuid` and `hiredis`.
 
 Just include the header: `#include "cppq.h"` and add these flags to your build `-luuid -lhiredis`.
 
-`libuuid`, `hiredis` and `nlohmann_json` can be installed using your distro's package manager.
+`libuuid` and `hiredis` can be installed using your distro's package manager.
 
-For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs nlohmann-json`
+For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs`
 
 ## Example
 
 ```c++
 #include "cppq.hpp"
+
+#include <nlohmann/json.hpp>
 
 const std::string TypeEmailDelivery = "email:deliver";
 
@@ -60,21 +59,22 @@ void to_json(nlohmann::json& j, const EmailDeliveryPayload& p) {
 cppq::Task NewEmailDeliveryTask(EmailDeliveryPayload payload) {
   nlohmann::json j = payload;
   // "10" is maxRetry -- the number of times the task will be retried on exception
-  return cppq::Task{TypeEmailDelivery, j, 10};
+  return cppq::Task{TypeEmailDelivery, j.dump(), 10};
 }
 
 // The actual task code
 void HandleEmailDeliveryTask(cppq::Task& task) {
   // Fetch the parameters
-  int userID = task.payload["UserID"];
-  std::string templateID = task.payload["TemplateID"];
+  nlohmann::json parsedPayload = nlohmann::json::parse(task.payload);
+  int userID = parsedPayload["UserID"];
+  std::string templateID = parsedPayload["TemplateID"];
 
   // Send the email...
 
   // Return a result
   nlohmann::json r;
   r["Sent"] = true;
-  task.result = r;
+  task.result = r.dump();
   return;
 }
 
