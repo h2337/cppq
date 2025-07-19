@@ -546,6 +546,9 @@ namespace cppq {
         [](std::pair<std::string, int> const& a, std::pair<std::string, int> const& b) { return a.second > b.second; }
         );
 
+    for (auto it = queuesVector.begin(); it != queuesVector.end(); it++)
+      redisCommand(c, "SADD cppq:queues %s:%d", it->first.c_str(), it->second);
+
     thread_pool pool;
     pool.push_task(recovery, redisOpts, queues, recoveryTimeoutSecond * 1000, 10000);
 
