@@ -63,24 +63,22 @@ std::string uuidToString(uuid_t uuid) {
 
 class Task {
   public:
-    Task(std::string type, nlohmann::json payload, uint64_t maxRetry, uint64_t timeoutMs) {
+    Task(std::string type, nlohmann::json payload, uint64_t maxRetry) {
       uuid_generate(this->uuid);
       this->type = type;
       this->payload = payload;
       this->state = TaskState::Unknown;
       this->maxRetry = maxRetry;
-      this->timeoutMs = timeoutMs;
       this->retried = 0;
       this->dequeuedAtMs = 0;
     }
-    Task(std::string uuid, std::string type, std::string payload, std::string state, uint64_t maxRetry, uint64_t timeoutMs, uint64_t retried, uint64_t dequeuedAtMs) {
+    Task(std::string uuid, std::string type, std::string payload, std::string state, uint64_t maxRetry, uint64_t retried, uint64_t dequeuedAtMs) {
       uuid_t uuid_parsed;
       uuid_parse(uuid.c_str(), uuid_parsed);
       uuid_copy(this->uuid, uuid_parsed);
       this->type = type;
       this->payload = nlohmann::json::parse(payload);
       this->maxRetry = maxRetry;
-      this->timeoutMs = timeoutMs;
       this->retried = retried;
       this->dequeuedAtMs = dequeuedAtMs;
       this->state = stringToState(state);
@@ -90,7 +88,6 @@ class Task {
     nlohmann::json payload;
     TaskState state;
     uint64_t maxRetry;
-    uint64_t timeoutMs;
     uint64_t retried;
     uint64_t dequeuedAtMs;
     nlohmann::json result;
@@ -98,12 +95,12 @@ class Task {
 
 std::shared_ptr<Task> NewEmailDeliveryTask(EmailDeliveryPayload payload) {
   nlohmann::json j = payload;
-  return std::make_shared<Task>(TypeEmailDelivery, j, 10, 100000);
+  return std::make_shared<Task>(TypeEmailDelivery, j, 10);
 }
 
 std::shared_ptr<Task> NewImageResizeTask(ImageResizePayload payload) {
   nlohmann::json j = payload;
-  return std::make_shared<Task>(TypeImageResize, j, 10, 100000);
+  return std::make_shared<Task>(TypeImageResize, j, 10);
 }
 
 void HandleEmailDeliveryTask(std::shared_ptr<Task> task) {
@@ -128,7 +125,7 @@ void enqueue(redisContext *c, std::shared_ptr<Task> task) {
 
   redisCommand(c, "MULTI");
   redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task->uuid).c_str());
-  redisCommand(c, "HSET cppq:task:%s type %s payload %s state %s maxRetry %d timeoutMs %d retried %d dequeuedAtMs %d", uuidToString(task->uuid).c_str(), task->type.c_str(), task->payload.dump().c_str(), stateToString(task->state).c_str(), task->maxRetry, task->timeoutMs, task->retried, task->dequeuedAtMs);
+  redisCommand(c, "HSET cppq:task:%s type %s payload %s state %s maxRetry %d retried %d dequeuedAtMs %d", uuidToString(task->uuid).c_str(), task->type.c_str(), task->payload.dump().c_str(), stateToString(task->state).c_str(), task->maxRetry, task->retried, task->dequeuedAtMs);
   redisReply *reply = (redisReply *)redisCommand(c, "EXEC");
 
   if (reply->type == REDIS_REPLY_ERROR)
@@ -152,17 +149,16 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
   redisCommand(c, "HGET cppq:task:%s payload", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s state", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s maxRetry", uuid.c_str());
-  redisCommand(c, "HGET cppq:task:%s timeoutMs", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s retried", uuid.c_str());
   redisCommand(c, "HGET cppq:task:%s dequeuedAtMs", uuid.c_str());
   redisCommand(c, "HSET cppq:task:%s dequeuedAtMs %lu", uuid.c_str(), dequeuedAtMs);
   redisCommand(c, "LPUSH cppq:active %s", uuid.c_str());
   reply = (redisReply *)redisCommand(c, "EXEC");
 
-  if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 10)
+  if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 9)
     return nullptr;
 
-  std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, strtoull(reply->element[4]->str, NULL, 0), strtoull(reply->element[5]->str, NULL, 0), strtoull(reply->element[6]->str, NULL, 0), dequeuedAtMs);
+  std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, strtoull(reply->element[4]->str, NULL, 0), strtoull(reply->element[5]->str, NULL, 0), dequeuedAtMs);
 
   assert(task->state == TaskState::Pending);
 
