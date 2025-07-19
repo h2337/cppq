@@ -107,6 +107,12 @@ std::shared_ptr<Task> NewImageResizeTask(ImageResizePayload payload) {
 }
 
 void HandleEmailDeliveryTask(std::shared_ptr<Task> task) {
+  int userID = task->payload["UserID"];
+  std::string templateID = task->payload["TemplateID"];
+  nlohmann::json r;
+  r["UserIDMultiplied"] = userID * 2;
+  r["TemplateID"] = templateID;
+  task->result = r;
   return;
 }
 
@@ -130,9 +136,9 @@ void enqueue(redisContext *c, std::shared_ptr<Task> task) {
 }
 
 std::shared_ptr<Task> dequeue(redisContext *c) {
-  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:pending -1 -1)");
+  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:pending -1 -1");
   if (reply->type != REDIS_REPLY_ARRAY)
-    throw std::runtime_error("Failed to dequeue task");
+    return nullptr;
   if (reply->elements == 0)
     return nullptr;
   reply = reply->element[0];
@@ -195,7 +201,7 @@ void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
     }
     redisCommand(c, "EXEC");
     redisFree(c);
-    throw e;
+    return;
   }
 
   task->state = TaskState::Completed;
