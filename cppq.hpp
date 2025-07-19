@@ -2,9 +2,6 @@
 
 #include <string>
 #include <cstdint>
-#include <nlohmann/json.hpp>
-#include <hiredis/hiredis.h>
-#include <uuid/uuid.h>
 #include <chrono>
 #include <thread>
 #include <iostream>
@@ -18,6 +15,11 @@
 #include <queue>
 #include <type_traits>
 #include <utility>
+#include <optional>
+
+#include <nlohmann/json.hpp>
+#include <hiredis/hiredis.h>
+#include <uuid/uuid.h>
 
 // Retrofitted from https://github.com/bshoshany/thread-pool
 namespace ThreadPool
@@ -27,9 +29,11 @@ namespace ThreadPool
   class [[nodiscard]] thread_pool_light
   {
     public:
-      thread_pool_light(const concurrency_t thread_count_ = 0) : thread_count(determine_thread_count(thread_count_)), threads(std::make_unique<std::thread[]>(determine_thread_count(thread_count_))) {
-      create_threads();
-    }
+      thread_pool_light(const concurrency_t thread_count_ = 0) :
+        thread_count(determine_thread_count(thread_count_)),
+        threads(std::make_unique<std::thread[]>(determine_thread_count(thread_count_))) {
+        create_threads();
+      }
 
       ~thread_pool_light() {
         wait_for_tasks();
@@ -161,7 +165,15 @@ namespace cppq {
         this->retried = 0;
         this->dequeuedAtMs = 0;
       }
-      Task(std::string uuid, std::string type, std::string payload, std::string state, uint64_t maxRetry, uint64_t retried, uint64_t dequeuedAtMs) {
+      Task(
+        std::string uuid,
+        std::string type,
+        std::string payload,
+        std::string state,
+        uint64_t maxRetry,
+        uint64_t retried,
+        uint64_t dequeuedAtMs
+      ) {
         uuid_t uuid_parsed;
         uuid_parse(uuid.c_str(), uuid_parsed);
         uuid_copy(this->uuid, uuid_parsed);
@@ -182,35 +194,47 @@ namespace cppq {
       nlohmann::json result;
   };
 
-  using Handler = void (*)(std::shared_ptr<Task>);
+  using Handler = void (*)(Task&);
   auto handlers = std::unordered_map<std::string, Handler>();
 
   void registerHandler(std::string type, Handler handler) {
     handlers[type] = handler;
   }
 
-  void enqueue(redisContext *c, std::shared_ptr<Task> task) {
-    task->state = TaskState::Pending;
+  void enqueue(redisContext *c, Task task) {
+    task.state = TaskState::Pending;
 
     redisCommand(c, "MULTI");
-    redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task->uuid).c_str());
-    redisCommand(c, "HSET cppq:task:%s type %s payload %s state %s maxRetry %d retried %d dequeuedAtMs %d", uuidToString(task->uuid).c_str(), task->type.c_str(), task->payload.dump().c_str(), stateToString(task->state).c_str(), task->maxRetry, task->retried, task->dequeuedAtMs);
+    redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task.uuid).c_str());
+    redisCommand(
+      c,
+      "HSET cppq:task:%s type %s payload %s state %s maxRetry %d retried %d dequeuedAtMs %d",
+      uuidToString(task.uuid).c_str(),
+      task.type.c_str(),
+      task.payload.dump().c_str(),
+      stateToString(task.state).c_str(),
+      task.maxRetry,
+      task.retried,
+      task.dequeuedAtMs
+    );
     redisReply *reply = (redisReply *)redisCommand(c, "EXEC");
 
     if (reply->type == REDIS_REPLY_ERROR)
       throw std::runtime_error("Failed to enqueue task");
   }
 
-  std::shared_ptr<Task> dequeue(redisContext *c) {
+  std::optional<Task> dequeue(redisContext *c) {
     redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:pending -1 -1");
     if (reply->type != REDIS_REPLY_ARRAY)
-      return nullptr;
+      return {};
     if (reply->elements == 0)
-      return nullptr;
+      return {};
     reply = reply->element[0];
     std::string uuid = reply->str;
 
-    uint64_t dequeuedAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    uint64_t dequeuedAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()
+    ).count();
 
     redisCommand(c, "MULTI");
     redisCommand(c, "LREM cppq:pending 1 %s", uuid.c_str());
@@ -225,51 +249,79 @@ namespace cppq {
     reply = (redisReply *)redisCommand(c, "EXEC");
 
     if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 9)
-      return nullptr;
+      return {};
 
-    std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, strtoull(reply->element[4]->str, NULL, 0), strtoull(reply->element[5]->str, NULL, 0), dequeuedAtMs);
+    Task task = Task(
+      uuid,
+      reply->element[1]->str,
+      reply->element[2]->str,
+      reply->element[3]->str,
+      strtoull(reply->element[4]->str, NULL, 0),
+      strtoull(reply->element[5]->str, NULL, 0),
+      dequeuedAtMs
+    );
 
-    assert(task->state == TaskState::Pending);
+    assert(task.state == TaskState::Pending);
 
-    return task;
+    return std::make_optional<Task>(task);
   }
 
-  void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
+  void taskRunner(redisOptions options, Task task) {
     redisContext *c = redisConnectWithOptions(&options);
     if (c == NULL || c->err) {
       std::cerr << "Failed to connect to Redis" << std::endl;
       return;
     }
 
-    Handler handler = handlers[task->type];
+    Handler handler = handlers[task.type];
 
     try {
       handler(task);
     } catch(const std::exception &e) {
-      task->retried++;
+      task.retried++;
       redisCommand(c, "MULTI");
-      redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task->uuid).c_str());
-      redisCommand(c, "HSET cppq:task:%s retried %d", uuidToString(task->uuid).c_str(), task->retried);
-      if (task->retried >= task->maxRetry) {
-        task->state = TaskState::Failed;
-        redisCommand(c, "HSET cppq:task:%s state %s", uuidToString(task->uuid).c_str(), stateToString(task->state).c_str());
-        redisCommand(c, "LPUSH cppq:failed %s", uuidToString(task->uuid).c_str());
+      redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task.uuid).c_str());
+      redisCommand(c, "HSET cppq:task:%s retried %d", uuidToString(task.uuid).c_str(), task.retried);
+      if (task.retried >= task.maxRetry) {
+        task.state = TaskState::Failed;
+        redisCommand(
+          c,
+          "HSET cppq:task:%s state %s",
+          uuidToString(task.uuid).c_str(),
+          stateToString(task.state).c_str()
+        );
+        redisCommand(c, "LPUSH cppq:failed %s", uuidToString(task.uuid).c_str());
       } else {
-        task->state = TaskState::Pending;
-        redisCommand(c, "HSET cppq:task:%s state %s", uuidToString(task->uuid).c_str(), stateToString(task->state).c_str());
-        redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task->uuid).c_str());
+        task.state = TaskState::Pending;
+        redisCommand(
+          c,
+          "HSET cppq:task:%s state %s",
+          uuidToString(task.uuid).c_str(),
+          stateToString(task.state).c_str()
+        );
+        redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task.uuid).c_str());
       }
       redisCommand(c, "EXEC");
       redisFree(c);
       return;
     }
 
-    task->state = TaskState::Completed;
+    task.state = TaskState::Completed;
     redisCommand(c, "MULTI");
-    redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task->uuid).c_str());
-    redisCommand(c, "HSET cppq:task:%s state %s", uuidToString(task->uuid).c_str(), stateToString(task->state).c_str());
-    redisCommand(c, "HSET cppq:task:%s result %s", uuidToString(task->uuid).c_str(), task->result.dump().c_str());
-    redisCommand(c, "LPUSH cppq:completed %s", uuidToString(task->uuid).c_str());
+    redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task.uuid).c_str());
+    redisCommand(
+      c,
+      "HSET cppq:task:%s state %s",
+      uuidToString(task.uuid).c_str(),
+      stateToString(task.state).c_str()
+    );
+    redisCommand(
+      c,
+      "HSET cppq:task:%s result %s",
+      uuidToString(task.uuid).c_str(),
+      task.result.dump().c_str()
+    );
+    redisCommand(c, "LPUSH cppq:completed %s", uuidToString(task.uuid).c_str());
     redisCommand(c, "EXEC");
     redisFree(c);
   }
@@ -286,12 +338,26 @@ namespace cppq {
       redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active 0 -1");
       for (int i = 0; i < reply->elements; i++) {
         std::string uuid = reply->element[i]->str;
-        redisReply *dequeuedAtMsReply = (redisReply *)redisCommand(c, "HGET cppq:task:%s dequeuedAtMs", uuid.c_str());
+        redisReply *dequeuedAtMsReply = (redisReply *)redisCommand(
+          c,
+          "HGET cppq:task:%s dequeuedAtMs",
+          uuid.c_str()
+        );
         uint64_t dequeuedAtMs = strtoull(dequeuedAtMsReply->str, NULL, 0);
-        if (dequeuedAtMs + timeoutMs < std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) {
+        if (
+          dequeuedAtMs + timeoutMs <
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()
+          ).count()
+        ) {
           redisCommand(c, "MULTI");
           redisCommand(c, "LREM cppq:active 1 %s", uuid.c_str());
-          redisCommand(c, "HSET cppq:task:%s state %s", uuid.c_str(), stateToString(TaskState::Pending).c_str());
+          redisCommand(
+            c,
+            "HSET cppq:task:%s state %s",
+            uuid.c_str(),
+            stateToString(TaskState::Pending).c_str()
+          );
           redisCommand(c, "LPUSH cppq:pending %s", uuid.c_str());
           redisCommand(c, "EXEC");
         }
@@ -312,9 +378,9 @@ namespace cppq {
 
     while (true) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      std::shared_ptr<Task> task = dequeue(c);
-      if (task != nullptr)
-        pool.push_task(taskRunner, options, task);
+      std::optional<Task> task = dequeue(c);
+      if (task.has_value())
+        pool.push_task(taskRunner, options, task.value());
     }
   }
 }
