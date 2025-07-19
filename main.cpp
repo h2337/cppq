@@ -172,13 +172,8 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
 void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
   redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
-    if (c) {
-      printf("Error: %s\n", c->errstr);
-      return;
-    } else {
-      printf("Can't allocate redis context\n");
-      return;
-    }
+    std::cerr << "Faile to connect to Redis" << std::endl;
+    return;
   }
 
   Handler handler = handlers[task->type];
@@ -217,13 +212,8 @@ void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
 void runServer(redisOptions options) {
   redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
-    if (c) {
-      printf("Error: %s\n", c->errstr);
-      return;
-    } else {
-      printf("Can't allocate redis context\n");
-      return;
-    }
+    std::cerr << "Faile to connect to Redis" << std::endl;
+    return;
   }
 
   BS::thread_pool pool;
@@ -245,13 +235,8 @@ int main(int argc, char *argv[]) {
 
   redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
-    if (c) {
-      printf("Error: %s\n", c->errstr);
-      return 1;
-    } else {
-      printf("Can't allocate redis context\n");
-      return 1;
-    }
+    std::cerr << "Faile to connect to Redis" << std::endl;
+    return 1;
   }
 
   std::shared_ptr<Task> task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
