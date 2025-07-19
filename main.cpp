@@ -40,6 +40,7 @@ std::string stateToString(TaskState state) {
     case TaskState::Failed: return "Failed";
     case TaskState::Completed: return "Completed";
   }
+  return "Unknown";
 }
 
 std::string uuidToString(uuid_t uuid) {
