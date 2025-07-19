@@ -116,3 +116,9 @@ int main(int argc, char *argv[]) {
   }
 }
 ```
+
+## License
+
+cppq is MIT-licensed.
+
+Thread pooling functionality is retrofitted from https://github.com/bshoshany/thread-pool
