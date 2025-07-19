@@ -4,6 +4,8 @@
 #include <hiredis/hiredis.h>
 #include <uuid/uuid.h>
 #include <chrono>
+#include <thread>
+#include "BS_thread_pool.hpp"
 
 const std::string TypeEmailDelivery = "email:deliver";
 const std::string TypeImageResize = "image:resize";
@@ -91,6 +93,7 @@ class Task {
     uint64_t timeoutMs;
     uint64_t retried;
     uint64_t dequeuedAtMs;
+    nlohmann::json result;
 };
 
 std::shared_ptr<Task> NewEmailDeliveryTask(EmailDeliveryPayload payload) {
@@ -103,15 +106,15 @@ std::shared_ptr<Task> NewImageResizeTask(ImageResizePayload payload) {
   return std::make_shared<Task>(TypeImageResize, j, 10, 100000);
 }
 
-void HandleEmailDeliveryTask(Task *task) {
+void HandleEmailDeliveryTask(std::shared_ptr<Task> task) {
   return;
 }
 
-void HandleImageResizeTask(Task *task) {
+void HandleImageResizeTask(std::shared_ptr<Task> task) {
   return;
 }
 
-using Handler = void (*)(Task *);
+using Handler = void (*)(std::shared_ptr<Task>);
 auto handlers = std::unordered_map<std::string, Handler>();
 
 void enqueue(redisContext *c, std::shared_ptr<Task> task) {
@@ -151,7 +154,7 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
   reply = (redisReply *)redisCommand(c, "EXEC");
 
   if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 10)
-    throw std::runtime_error("Failed to dequeue task");
+    return nullptr;
 
   std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, reply->element[4]->integer, reply->element[5]->integer, reply->element[6]->integer, dequeuedAtMs);
 
@@ -160,15 +163,70 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
   return task;
 }
 
-void runServer(redisContext *c) {
+void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
+  redisContext *c = redisConnectWithOptions(&options);
+  if (c == NULL || c->err) {
+    if (c) {
+      printf("Error: %s\n", c->errstr);
+      return;
+    } else {
+      printf("Can't allocate redis context\n");
+      return;
+    }
+  }
 
+  Handler handler = handlers[task->type];
+  try {
+    handler(task);
+  } catch(const std::exception &e) {
+    task->retried++;
+    redisCommand(c, "MULTI");
+    redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task->uuid).c_str());
+    redisCommand(c, "HSET cppq:task:%s retried %d", uuidToString(task->uuid).c_str(), task->retried);
+    if (task->retried >= task->maxRetry)
+      redisCommand(c, "LPUSH cppq:failed %s", uuidToString(task->uuid).c_str());
+    else
+      redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task->uuid).c_str());
+    redisCommand(c, "EXEC");
+    redisFree(c);
+    throw e;
+  }
+  redisCommand(c, "MULTI");
+  redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task->uuid).c_str());
+  redisCommand(c, "LPUSH cppq:completed %s", uuidToString(task->uuid).c_str());
+  redisFree(c);
+}
+
+void runServer(redisOptions options) {
+  redisContext *c = redisConnectWithOptions(&options);
+  if (c == NULL || c->err) {
+    if (c) {
+      printf("Error: %s\n", c->errstr);
+      return;
+    } else {
+      printf("Can't allocate redis context\n");
+      return;
+    }
+  }
+
+  BS::thread_pool pool;
+
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::shared_ptr<Task> task = dequeue(c);
+    if (task != nullptr)
+      pool.push_task(taskRunner, options, task);
+  }
 }
 
 int main(int argc, char *argv[]) {
   handlers[TypeEmailDelivery] = &HandleEmailDeliveryTask;
   handlers[TypeImageResize] = &HandleImageResizeTask;
 
-  redisContext *c = redisConnect("127.0.0.1", 6379);
+  redisOptions options = {0};
+  REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
+
+  redisContext *c = redisConnectWithOptions(&options);
   if (c == NULL || c->err) {
     if (c) {
       printf("Error: %s\n", c->errstr);
@@ -182,5 +240,5 @@ int main(int argc, char *argv[]) {
   std::shared_ptr<Task> task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
   enqueue(c, task);
 
-  runServer(c);
+  runServer(options);
 }
