@@ -470,6 +470,7 @@ namespace cppq {
       return;
     }
 
+    // TODO: Consider incrementing `retried` on recovery
     while (true) {
       std::this_thread::sleep_for(std::chrono::milliseconds(checkEveryMs));
       for (std::map<std::string, int>::iterator it = queues.begin(); it != queues.end(); it++) {
