@@ -1,5 +1,7 @@
 #include "cppq.hpp"
 
+#include <nlohmann/json.hpp>
+
 const std::string TypeEmailDelivery = "email:deliver";
 
 typedef struct {
@@ -13,16 +15,17 @@ void to_json(nlohmann::json& j, const EmailDeliveryPayload& p) {
 
 cppq::Task NewEmailDeliveryTask(EmailDeliveryPayload payload) {
   nlohmann::json j = payload;
-  return cppq::Task{TypeEmailDelivery, j, 10};
+  return cppq::Task{TypeEmailDelivery, j.dump(), 10};
 }
 
 void HandleEmailDeliveryTask(cppq::Task& task) {
-  int userID = task.payload["UserID"];
-  std::string templateID = task.payload["TemplateID"];
+  nlohmann::json parsedPayload = nlohmann::json::parse(task.payload);
+  int userID = parsedPayload["UserID"];
+  std::string templateID = parsedPayload["TemplateID"];
 
   nlohmann::json r;
   r["Sent"] = true;
-  task.result = r;
+  task.result = r.dump();
   return;
 }
 

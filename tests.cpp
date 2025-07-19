@@ -1,5 +1,7 @@
 #include "cppq.hpp"
 
+#include <nlohmann/json.hpp>
+
 #undef NDEBUG
 
 const std::string TypeEmailDelivery = "email:deliver";
@@ -15,16 +17,17 @@ void to_json(nlohmann::json& j, const EmailDeliveryPayload& p) {
 
 cppq::Task NewEmailDeliveryTask(EmailDeliveryPayload payload) {
   nlohmann::json j = payload;
-  return cppq::Task{TypeEmailDelivery, j, 10};
+  return cppq::Task{TypeEmailDelivery, j.dump(), 10};
 }
 
 void HandleEmailDeliveryTask(cppq::Task& task) {
-  int userID = task.payload["UserID"];
-  std::string templateID = task.payload["TemplateID"];
+  nlohmann::json parsedPayload = nlohmann::json::parse(task.payload);
+  int userID = parsedPayload["UserID"];
+  std::string templateID = parsedPayload["TemplateID"];
 
   nlohmann::json r;
   r["Sent"] = true;
-  task.result = r;
+  task.result = r.dump();
   return;
 }
 
@@ -77,8 +80,7 @@ void testEnqueue() {
   );
 
   assert(task.type.compare(TypeEmailDelivery) == 0);
-  assert(task.payload["UserID"] == 666);
-  assert(task.payload["TemplateID"].get<std::string>().compare("AH") == 0);
+  assert(task.payload.compare("{\"TemplateID\":\"AH\",\"UserID\":666}") == 0);
   assert(task.state == cppq::TaskState::Pending);
   assert(task.maxRetry == 10);
   assert(task.retried == 0);
@@ -104,8 +106,7 @@ void testDequeue() {
   std::optional<cppq::Task> dequeued = cppq::dequeue(c, "default");
 
   assert(dequeued.value().type.compare(TypeEmailDelivery) == 0);
-  assert(dequeued.value().payload["UserID"] == 666);
-  assert(dequeued.value().payload["TemplateID"].get<std::string>().compare("AH") == 0);
+  assert(dequeued.value().payload.compare("{\"TemplateID\":\"AH\",\"UserID\":666}") == 0);
   assert(dequeued.value().state == cppq::TaskState::Active);
   assert(dequeued.value().maxRetry == 10);
   assert(dequeued.value().retried == 0);
