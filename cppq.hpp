@@ -118,7 +118,6 @@ namespace cppq {
       std::atomic<bool> waiting = false;
   };
 
-
   enum class TaskState {
     Unknown,
     Pending,
