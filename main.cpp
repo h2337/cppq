@@ -162,7 +162,7 @@ std::shared_ptr<Task> dequeue(redisContext *c) {
   if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 10)
     return nullptr;
 
-  std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, reply->element[4]->integer, reply->element[5]->integer, reply->element[6]->integer, dequeuedAtMs);
+  std::shared_ptr<Task> task = std::make_shared<Task>(uuid, reply->element[1]->str, reply->element[2]->str, reply->element[3]->str, strtoull(reply->element[4]->str, NULL, 0), strtoull(reply->element[5]->str, NULL, 0), strtoull(reply->element[6]->str, NULL, 0), dequeuedAtMs);
 
   assert(task->state == TaskState::Pending);
 
