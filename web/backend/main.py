@@ -67,7 +67,8 @@ def queueStats(queue):
     active = redisClient.llen('cppq:' + queue + ':active')
     completed = redisClient.llen('cppq:' + queue + ':completed')
     failed = redisClient.llen('cppq:' + queue + ':failed')
-    return { 'pending': pending, 'scheduled': scheduled, 'active': active, 'completed': completed, 'failed': failed }
+    paused = redisClient.sismember('cppq:queues:paused', queue);
+    return { 'pending': pending, 'scheduled': scheduled, 'active': active, 'completed': completed, 'failed': failed, 'paused': paused }
 
 @app.route('/queue/<queue>/<state>/tasks', methods = ['GET'])
 def queueTasks(queue, state):
@@ -76,6 +77,16 @@ def queueTasks(queue, state):
     for uuid in taskUuids:
         tasks.append(decode_redis(redisClient.hgetall('cppq:' + queue + ':task:' + uuid)))
     return { 'result': tasks }
+
+@app.route('/queue/<queue>/pause', methods = ['POST'])
+def pauseQueue(queue):
+    redisClient.sadd('cppq:queues:paused', queue)
+    return { 'success': True }
+
+@app.route('/queue/<queue>/unpause', methods = ['POST'])
+def unpauseQueue(queue):
+    redisClient.srem('cppq:queues:paused', queue)
+    return { 'success': True }
 
 @app.route('/queue', methods = ['GET'])
 def queues():
