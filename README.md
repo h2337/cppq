@@ -1,4 +1,4 @@
-<img align="right" src="https://github.com/h2337/file-hosting/blob/87315e66c91576a8098cd43fc169c52cad4d44bf/cppq.png">
+<img align="right" src="https://raw.githubusercontent.com/h2337/cppq/refs/heads/master/logo.svg">
 
 ## TOC
 
