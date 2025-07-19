@@ -43,9 +43,9 @@ void testEnqueue() {
 
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
 
-  cppq::enqueue(c, task);
+  cppq::enqueue(c, task, "default");
 
-  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:pending -1 -1");
+  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:default:pending -1 -1");
   if (reply->type != REDIS_REPLY_ARRAY)
     assert(false);
   if (reply->elements == 0)
@@ -54,13 +54,13 @@ void testEnqueue() {
   std::string uuid = reply->str;
 
   redisCommand(c, "MULTI");
-  redisCommand(c, "LREM cppq:pending 1 %s", uuid.c_str());
-  redisCommand(c, "HGET cppq:task:%s type", uuid.c_str());
-  redisCommand(c, "HGET cppq:task:%s payload", uuid.c_str());
-  redisCommand(c, "HGET cppq:task:%s state", uuid.c_str());
-  redisCommand(c, "HGET cppq:task:%s maxRetry", uuid.c_str());
-  redisCommand(c, "HGET cppq:task:%s retried", uuid.c_str());
-  redisCommand(c, "HGET cppq:task:%s dequeuedAtMs", uuid.c_str());
+  redisCommand(c, "LREM cppq:default:pending 1 %s", uuid.c_str());
+  redisCommand(c, "HGET cppq:default:task:%s type", uuid.c_str());
+  redisCommand(c, "HGET cppq:default:task:%s payload", uuid.c_str());
+  redisCommand(c, "HGET cppq:default:task:%s state", uuid.c_str());
+  redisCommand(c, "HGET cppq:default:task:%s maxRetry", uuid.c_str());
+  redisCommand(c, "HGET cppq:default:task:%s retried", uuid.c_str());
+  redisCommand(c, "HGET cppq:default:task:%s dequeuedAtMs", uuid.c_str());
   reply = (redisReply *)redisCommand(c, "EXEC");
 
   if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 7)
@@ -100,8 +100,8 @@ void testDequeue() {
 
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
 
-  cppq::enqueue(c, task);
-  std::optional<cppq::Task> dequeued = cppq::dequeue(c);
+  cppq::enqueue(c, task, "default");
+  std::optional<cppq::Task> dequeued = cppq::dequeue(c, "default");
 
   assert(dequeued.value().type.compare(TypeEmailDelivery) == 0);
   assert(dequeued.value().payload["UserID"] == 666);
@@ -111,7 +111,7 @@ void testDequeue() {
   assert(dequeued.value().retried == 0);
   assert(dequeued.value().dequeuedAtMs != 0);
 
-  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active -1 -1");
+  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:default:active -1 -1");
   if (reply->type != REDIS_REPLY_ARRAY)
     assert(false);
   if (reply->elements == 0)
@@ -137,21 +137,21 @@ void testRecovery() {
 
   cppq::Task task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
 
-  cppq::enqueue(c, task);
-  std::optional<cppq::Task> dequeued = cppq::dequeue(c);
+  cppq::enqueue(c, task, "default");
+  std::optional<cppq::Task> dequeued = cppq::dequeue(c, "default");
 
-  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active -1 -1");
+  redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:default:active -1 -1");
   if (reply->type != REDIS_REPLY_ARRAY)
     assert(false);
   if (reply->elements == 0)
     assert(false);
 
   cppq::thread_pool pool;
-  pool.push_task(cppq::recovery, options, 1, 10);
+  pool.push_task(cppq::recovery, options, (std::map<std::string, int>){{"default", 5}}, 1, 10);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-  reply = (redisReply *)redisCommand(c, "LRANGE cppq:pending -1 -1");
+  reply = (redisReply *)redisCommand(c, "LRANGE cppq:default:pending -1 -1");
   if (reply->type != REDIS_REPLY_ARRAY)
     assert(false);
   if (reply->elements == 0)
