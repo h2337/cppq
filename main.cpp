@@ -42,6 +42,12 @@ std::string stateToString(TaskState state) {
   }
 }
 
+std::string uuidToString(uuid_t uuid) {
+  char uuid_str[37];
+  uuid_unparse_lower(uuid, uuid_str);
+  return uuid_str;
+}
+
 class Task {
   public:
     Task(std::string type, nlohmann::json payload, uint64_t maxRetry, uint64_t timeoutMs) {
@@ -64,14 +70,14 @@ class Task {
     uint64_t dequeuedAtMs;
 };
 
-std::unique_ptr<Task> NewEmailDeliveryTask(EmailDeliveryPayload payload) {
+std::shared_ptr<Task> NewEmailDeliveryTask(EmailDeliveryPayload payload) {
   nlohmann::json j = payload;
-  return std::make_unique<Task>(TypeEmailDelivery, j, 10, 100000);
+  return std::make_shared<Task>(TypeEmailDelivery, j, 10, 100000);
 }
 
-std::unique_ptr<Task> NewImageResizeTask(ImageResizePayload payload) {
+std::shared_ptr<Task> NewImageResizeTask(ImageResizePayload payload) {
   nlohmann::json j = payload;
-  return std::make_unique<Task>(TypeImageResize, j, 10, 100000);
+  return std::make_shared<Task>(TypeImageResize, j, 10, 100000);
 }
 
 void HandleEmailDeliveryTask(Task *task) {
@@ -85,18 +91,16 @@ void HandleImageResizeTask(Task *task) {
 using Handler = void (*)(Task *);
 auto handlers = std::unordered_map<std::string, Handler>();
 
-void enqueue(redisContext *c, Task *task) {
+void enqueue(redisContext *c, std::shared_ptr<Task> task) {
   task->state = TaskState::Pending;
 
   redisCommand(c, "MULTI");
-  redisCommand(c, "LPUSH cppq:pending %s", task->uuid);
-  redisCommand(c, "HSET cppq:task:%s type \"%s\" payload \"%s\" state \"%s\" maxRetry %d timeoutMs %d retried %d dequeuedAtMs %d", task->uuid, task->type.c_str(), task->payload.dump().c_str(), stateToString(task->state).c_str(), task->maxRetry, task->timeoutMs, task->retried, task->dequeuedAtMs);
+  redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task->uuid).c_str());
+  redisCommand(c, "HSET cppq:task:%s type %s payload %s state %s maxRetry %d timeoutMs %d retried %d dequeuedAtMs %d", uuidToString(task->uuid).c_str(), task->type.c_str(), task->payload.dump().c_str(), stateToString(task->state).c_str(), task->maxRetry, task->timeoutMs, task->retried, task->dequeuedAtMs);
   redisReply *reply = (redisReply *)redisCommand(c, "EXEC");
 
   if (reply->type == REDIS_REPLY_ERROR)
     throw std::runtime_error("Failed to enqueue task");
-
-  // TODO: Return Future
 }
 
 int main(int argc, char *argv[]) {
@@ -113,4 +117,7 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
+
+  std::shared_ptr<Task> task = NewEmailDeliveryTask(EmailDeliveryPayload{.UserID = 666, .TemplateID = "AH"});
+  enqueue(c, task);
 }
