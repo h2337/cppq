@@ -111,7 +111,6 @@ int main(int argc, char *argv[]) {
     cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1))
   );
 
-
   // This call will loop forever checking the pending queue and processing tasks in the thread pool.
   // Second argument defines queues and their priorities.
   // Third argument is time in seconds that task can be alive in active queue
