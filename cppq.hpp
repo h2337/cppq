@@ -365,7 +365,7 @@ namespace cppq {
     }
   }
 
-  void runServer(redisOptions options, uint64_t recoveryTimeoutMs) {
+  void runServer(redisOptions options, uint64_t recoveryTimeoutSecond) {
     redisContext *c = redisConnectWithOptions(&options);
     if (c == NULL || c->err) {
       std::cerr << "Failed to connect to Redis" << std::endl;
@@ -374,7 +374,7 @@ namespace cppq {
 
     ThreadPool::thread_pool_light pool;
 
-    pool.push_task(recovery, options, recoveryTimeoutMs);
+    pool.push_task(recovery, options, recoveryTimeoutSecond * 1000);
 
     while (true) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
