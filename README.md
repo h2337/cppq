@@ -20,7 +20,7 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 
 ## Quickstart
 
-cppq is a header-only library with 3 dependecies: `libuuid`, `hiredis`, `nlohmann_json`.
+cppq is a header-only library with 3 dependencies: `libuuid`, `hiredis`, `nlohmann_json`.
 
 Just include the header: `#include "cppq.h"` and add these flags to your build `-luuid -lhiredis`.
 
@@ -81,7 +81,7 @@ void HandleEmailDeliveryTask(std::shared_ptr<cppq::Task> task) {
 }
 
 void HandleImageResizeTask(std::shared_ptr<cppq::Task> task) {
- // Handle the task here...
+  // Handle the task here...
   return;
 }
 
