@@ -3,13 +3,21 @@
 </p>
 
 ## TOC
+
 [Overview](#overview)
+
 [Features](#features)
+
 [Quickstart](#quickstart)
+
 [Example](#example)
-[Web UI](#web ui)
+
+[Web UI](#web)
+
 [CLI](#cli)
+
 [License](#license)
+
 
 ## Overview
 
