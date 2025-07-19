@@ -182,6 +182,48 @@ namespace cppq {
         this->dequeuedAtMs = dequeuedAtMs;
         this->state = stringToState(state);
       }
+      Task(
+          std::string uuid,
+          std::string type,
+          std::string payload,
+          std::string state,
+          uint64_t maxRetry,
+          uint64_t retried,
+          uint64_t dequeuedAtMs,
+          uint64_t schedule
+          ) {
+        uuid_t uuid_parsed;
+        uuid_parse(uuid.c_str(), uuid_parsed);
+        uuid_copy(this->uuid, uuid_parsed);
+        this->type = type;
+        this->payload = payload;
+        this->maxRetry = maxRetry;
+        this->retried = retried;
+        this->dequeuedAtMs = dequeuedAtMs;
+        this->state = stringToState(state);
+        this->schedule = schedule;
+      }
+      Task(
+          std::string uuid,
+          std::string type,
+          std::string payload,
+          std::string state,
+          uint64_t maxRetry,
+          uint64_t retried,
+          uint64_t dequeuedAtMs,
+          std::string cron
+          ) {
+        uuid_t uuid_parsed;
+        uuid_parse(uuid.c_str(), uuid_parsed);
+        uuid_copy(this->uuid, uuid_parsed);
+        this->type = type;
+        this->payload = payload;
+        this->maxRetry = maxRetry;
+        this->retried = retried;
+        this->dequeuedAtMs = dequeuedAtMs;
+        this->state = stringToState(state);
+        this->cron = cron;
+      }
       uuid_t uuid;
       std::string type;
       std::string payload;
@@ -189,6 +231,8 @@ namespace cppq {
       uint64_t maxRetry;
       uint64_t retried;
       uint64_t dequeuedAtMs;
+      uint64_t schedule;
+      std::string cron;
       std::string result;
   };
 
@@ -199,27 +243,81 @@ namespace cppq {
     handlers[type] = handler;
   }
 
-  void enqueue(redisContext *c, Task task, std::string queue) {
+  typedef enum { Cron, TimePoint, None } ScheduleType;
+
+  typedef struct ScheduleOptions {
+    union {
+      const char *cron;
+      std::chrono::system_clock::time_point time;
+    };
+    ScheduleType type;
+  } ScheduleOptions;
+
+  ScheduleOptions scheduleOptions(std::chrono::system_clock::time_point t) {
+    return ScheduleOptions{ .time = t, .type = ScheduleType::TimePoint };
+  }
+
+  ScheduleOptions scheduleOptions(std::string c) {
+    return ScheduleOptions{ .cron = c.c_str(), .type = ScheduleType::Cron };
+  }
+
+  void enqueue(redisContext *c, Task task, std::string queue, ScheduleOptions s) {
     task.state = TaskState::Pending;
 
     redisCommand(c, "MULTI");
-    redisCommand(c, "LPUSH cppq:%s:pending %s", queue.c_str(), uuidToString(task.uuid).c_str());
-    redisCommand(
-        c,
-        "HSET cppq:%s:task:%s type %s payload %s state %s maxRetry %d retried %d dequeuedAtMs %d",
-        queue.c_str(),
-        uuidToString(task.uuid).c_str(),
-        task.type.c_str(),
-        task.payload.c_str(),
-        stateToString(task.state).c_str(),
-        task.maxRetry,
-        task.retried,
-        task.dequeuedAtMs
-        );
+    if (s.type == ScheduleType::None) {
+      redisCommand(c, "LPUSH cppq:%s:pending %s", queue.c_str(), uuidToString(task.uuid).c_str());
+      redisCommand(
+          c,
+          "HSET cppq:%s:task:%s type %s payload %s state %s maxRetry %d retried %d dequeuedAtMs %d",
+          queue.c_str(),
+          uuidToString(task.uuid).c_str(),
+          task.type.c_str(),
+          task.payload.c_str(),
+          stateToString(task.state).c_str(),
+          task.maxRetry,
+          task.retried,
+          task.dequeuedAtMs
+          );
+    } else if (s.type == ScheduleType::TimePoint) {
+      redisCommand(c, "LPUSH cppq:%s:scheduled %s", queue.c_str(), uuidToString(task.uuid).c_str());
+      redisCommand(
+          c,
+          "HSET cppq:%s:task:%s type %s payload %s state %s maxRetry %d retried %d dequeuedAtMs %d schedule %lu",
+          queue.c_str(),
+          uuidToString(task.uuid).c_str(),
+          task.type.c_str(),
+          task.payload.c_str(),
+          stateToString(task.state).c_str(),
+          task.maxRetry,
+          task.retried,
+          task.dequeuedAtMs,
+          std::chrono::duration_cast<std::chrono::milliseconds>(s.time.time_since_epoch()).count()
+          );
+    } else if (s.type == ScheduleType::Cron) {
+      redisCommand(c, "LPUSH cppq:%s:scheduled %s", queue.c_str(), uuidToString(task.uuid).c_str());
+      redisCommand(
+          c,
+          "HSET cppq:%s:task:%s type %s payload %s state %s maxRetry %d retried %d dequeuedAtMs %d cron %s",
+          queue.c_str(),
+          uuidToString(task.uuid).c_str(),
+          task.type.c_str(),
+          task.payload.c_str(),
+          stateToString(task.state).c_str(),
+          task.maxRetry,
+          task.retried,
+          task.dequeuedAtMs,
+          s.cron
+          );
+    }
     redisReply *reply = (redisReply *)redisCommand(c, "EXEC");
 
     if (reply->type == REDIS_REPLY_ERROR)
       throw std::runtime_error("Failed to enqueue task");
+  }
+
+  void enqueue(redisContext *c, Task task, std::string queue) {
+    return enqueue(c, task, queue, ScheduleOptions{ .cron = "", .type = ScheduleType::None });
   }
 
   std::optional<Task> dequeue(redisContext *c, std::string queue) {
@@ -257,6 +355,45 @@ namespace cppq {
         strtoull(reply->element[4]->str, NULL, 0),
         strtoull(reply->element[5]->str, NULL, 0),
         dequeuedAtMs
+        );
+
+    return std::make_optional<Task>(task);
+  }
+
+  std::optional<Task> dequeueScheduled(redisContext *c, std::string queue, char *getScheduledScriptSHA) {
+    redisReply *reply = (redisReply *)redisCommand(c, "EVALSHA %s 0 %s", getScheduledScriptSHA, queue.c_str());
+    if (reply->type != REDIS_REPLY_STRING)
+      return {};
+    std::string uuid = reply->str;
+
+    uint64_t dequeuedAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    redisCommand(c, "MULTI");
+    redisCommand(c, "LREM cppq:%s:scheduled 1 %s", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HGET cppq:%s:task:%s type", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HGET cppq:%s:task:%s payload", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HGET cppq:%s:task:%s state", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HGET cppq:%s:task:%s maxRetry", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HGET cppq:%s:task:%s retried", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HGET cppq:%s:task:%s dequeuedAtMs", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HGET cppq:%s:task:%s schedule", queue.c_str(), uuid.c_str());
+    redisCommand(c, "HSET cppq:%s:task:%s dequeuedAtMs %lu", queue.c_str(), uuid.c_str(), dequeuedAtMs);
+    redisCommand(c, "HSET cppq:%s:task:%s state %s", queue.c_str(), uuid.c_str(), stateToString(TaskState::Active).c_str());
+    redisCommand(c, "LPUSH cppq:%s:active %s", queue.c_str(), uuid.c_str());
+    reply = (redisReply *)redisCommand(c, "EXEC");
+
+    if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 11)
+      return {};
+
+    Task task = Task(
+        uuid,
+        reply->element[1]->str,
+        reply->element[2]->str,
+        stateToString(TaskState::Active),
+        strtoull(reply->element[4]->str, NULL, 0),
+        strtoull(reply->element[5]->str, NULL, 0),
+        dequeuedAtMs,
+        strtoull(reply->element[6]->str, NULL, 0)
         );
 
     return std::make_optional<Task>(task);
@@ -369,12 +506,25 @@ namespace cppq {
     }
   }
 
+  const char *getScheduledScript = R"DOC(
+    local timeCall = redis.call('time')
+    local time = timeCall[1] ..timeCall[2]
+    local scheduled = redis.call('LRANGE',  'cppq:' .. ARGV[1] .. ':scheduled', 0, -1)
+    for _,key in ipairs(scheduled) do
+      if (time > redis.call('HGET', 'cppq:' .. ARGV[1] .. ':task:' .. key, 'schedule')) then
+        return key
+      end
+    end)DOC";
+
   void runServer(redisOptions redisOpts, std::map<std::string, int> queues, uint64_t recoveryTimeoutSecond) {
     redisContext *c = redisConnectWithOptions(&redisOpts);
     if (c == NULL || c->err) {
       std::cerr << "Failed to connect to Redis" << std::endl;
       return;
     }
+
+    redisReply *reply = (redisReply *)redisCommand(c, "SCRIPT LOAD %s", getScheduledScript);
+    char *getScheduledScriptSHA = reply->str;
 
     std::vector<std::pair<std::string, int>> queuesVector;
     for (auto& it : queues) queuesVector.push_back(it);
@@ -386,7 +536,10 @@ namespace cppq {
     while (true) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       for (std::vector<std::pair<std::string, int>>::iterator it = queuesVector.begin(); it != queuesVector.end(); it++) {
-        std::optional<Task> task = dequeue(c, it->first);
+        std::optional<Task> task;
+        task = dequeueScheduled(c, it->first, getScheduledScriptSHA);
+        if (!task.has_value())
+          task = dequeue(c, it->first);
         if (task.has_value()) {
           pool.push_task(taskRunner, redisOpts, task.value(), it->first);
           break;
