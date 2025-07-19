@@ -482,6 +482,12 @@ namespace cppq {
               it->first.c_str(),
               uuid.c_str()
               );
+          redisReply *scheduleReply = (redisReply *)redisCommand(
+              c,
+              "HGET cppq:%s:task:%s schedule",
+              it->first.c_str(),
+              uuid.c_str()
+              );
           uint64_t dequeuedAtMs = strtoull(dequeuedAtMsReply->str, NULL, 0);
           if (
               dequeuedAtMs + timeoutMs <
@@ -498,7 +504,10 @@ namespace cppq {
                 uuid.c_str(),
                 stateToString(TaskState::Pending).c_str()
                 );
-            redisCommand(c, "LPUSH cppq:%s:pending %s", it->first.c_str(), uuid.c_str());
+            if (scheduleReply->type == REDIS_REPLY_NIL)
+              redisCommand(c, "LPUSH cppq:%s:pending %s", it->first.c_str(), uuid.c_str());
+            else
+              redisCommand(c, "LPUSH cppq:%s:scheduled %s", it->first.c_str(), uuid.c_str());
             redisCommand(c, "EXEC");
           }
         }
