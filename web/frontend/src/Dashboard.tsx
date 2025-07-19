@@ -78,11 +78,16 @@ function Dashboard() {
     }
   }, [refetch, refetchInterval, onUpdateIntervalChange]);
 
+  const onQueueClick = (queue: string) => {
+    console.log(queue);
+  };
+
   const columns = [
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
+      render: (text: string) => <a onClick={() => onQueueClick(text)}>{text}</a>
     },
     {
       title: 'Priority',
