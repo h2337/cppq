@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
 
 ## Web UI
 
-If you are on Linux then web UI can be started by running: `./web/start.sh`
+If you are on Linux then web UI can be started by running: `cd web && ./start.sh`
 
 Web UI is made with React/TypeScript and Flask/Python. It is still work-in-progress.
 
