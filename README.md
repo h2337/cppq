@@ -2,7 +2,7 @@
 
 cppq is a simple, reliable & efficient distributed task queue for C++17.
 
-cppq is a C++ library for queueing tasks and processing them asynchronously with workers. It's backed by Redis and is designed to be scalable yet easy to get started.
+cppq is a C++ library for queueing tasks and processing them asynchronously with workers. It's backed by Redis and is designed to be scalable and easy to get started with.
 
 Highlevel overview of how cppq works:
 
