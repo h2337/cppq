@@ -24,7 +24,7 @@ function Dashboard(props: { refetch: Date }) {
         });
     }
     fetchQueues();
-  }, [props.refetch]);
+  }, [props.refetch, navigate]);
 
   const onQueueClick = (queue: string) => {
     navigate('/queue/' + queue);
