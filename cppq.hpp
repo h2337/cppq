@@ -170,48 +170,9 @@ namespace cppq {
           std::string state,
           uint64_t maxRetry,
           uint64_t retried,
-          uint64_t dequeuedAtMs
-          ) {
-        uuid_t uuid_parsed;
-        uuid_parse(uuid.c_str(), uuid_parsed);
-        uuid_copy(this->uuid, uuid_parsed);
-        this->type = type;
-        this->payload = payload;
-        this->maxRetry = maxRetry;
-        this->retried = retried;
-        this->dequeuedAtMs = dequeuedAtMs;
-        this->state = stringToState(state);
-      }
-      Task(
-          std::string uuid,
-          std::string type,
-          std::string payload,
-          std::string state,
-          uint64_t maxRetry,
-          uint64_t retried,
           uint64_t dequeuedAtMs,
-          uint64_t schedule
-          ) {
-        uuid_t uuid_parsed;
-        uuid_parse(uuid.c_str(), uuid_parsed);
-        uuid_copy(this->uuid, uuid_parsed);
-        this->type = type;
-        this->payload = payload;
-        this->maxRetry = maxRetry;
-        this->retried = retried;
-        this->dequeuedAtMs = dequeuedAtMs;
-        this->state = stringToState(state);
-        this->schedule = schedule;
-      }
-      Task(
-          std::string uuid,
-          std::string type,
-          std::string payload,
-          std::string state,
-          uint64_t maxRetry,
-          uint64_t retried,
-          uint64_t dequeuedAtMs,
-          std::string cron
+          uint64_t schedule = 0,
+          std::string cron = ""
           ) {
         uuid_t uuid_parsed;
         uuid_parse(uuid.c_str(), uuid_parsed);
@@ -522,7 +483,7 @@ namespace cppq {
     local timeCall = redis.call('time')
     local time = timeCall[1] ..timeCall[2]
     local scheduled = redis.call('LRANGE',  'cppq:' .. ARGV[1] .. ':scheduled', 0, -1)
-    for _,key in ipairs(scheduled) do
+    for _, key in ipairs(scheduled) do
       if (time > redis.call('HGET', 'cppq:' .. ARGV[1] .. ':task:' .. key, 'schedule')) then
         return key
       end
