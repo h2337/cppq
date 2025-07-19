@@ -21,21 +21,20 @@
 #include <hiredis/hiredis.h>
 #include <uuid/uuid.h>
 
-// Retrofitted from https://github.com/bshoshany/thread-pool
-namespace ThreadPool
-{
+namespace cppq {
   using concurrency_t = std::invoke_result_t<decltype(std::thread::hardware_concurrency)>;
 
-  class [[nodiscard]] thread_pool_light
+  // Retrofitted from https://github.com/bshoshany/thread-pool
+  class [[nodiscard]] thread_pool
   {
     public:
-      thread_pool_light(const concurrency_t thread_count_ = 0) :
+      thread_pool(const concurrency_t thread_count_ = 0) :
         thread_count(determine_thread_count(thread_count_)),
         threads(std::make_unique<std::thread[]>(determine_thread_count(thread_count_))) {
         create_threads();
       }
 
-      ~thread_pool_light() {
+      ~thread_pool() {
         wait_for_tasks();
         destroy_threads();
       }
@@ -46,7 +45,8 @@ namespace ThreadPool
 
       template <typename F, typename... A>
         void push_task(F&& task, A&&... args) {
-          std::function<void()> task_function = std::bind(std::forward<F>(task), std::forward<A>(args)...);
+          std::function<void()> task_function =
+            std::bind(std::forward<F>(task), std::forward<A>(args)...);
           {
             const std::scoped_lock tasks_lock(tasks_mutex);
             tasks.push(task_function);
@@ -66,7 +66,7 @@ namespace ThreadPool
       void create_threads() {
         running = true;
         for (concurrency_t i = 0; i < thread_count; ++i) {
-          threads[i] = std::thread(&thread_pool_light::worker, this);
+          threads[i] = std::thread(&thread_pool::worker, this);
         }
       }
 
@@ -117,9 +117,8 @@ namespace ThreadPool
       std::unique_ptr<std::thread[]> threads = nullptr;
       std::atomic<bool> waiting = false;
   };
-}
 
-namespace cppq {
+
   enum class TaskState {
     Unknown,
     Pending,
@@ -372,7 +371,7 @@ namespace cppq {
       return;
     }
 
-    ThreadPool::thread_pool_light pool;
+    thread_pool pool;
 
     pool.push_task(recovery, options, recoveryTimeoutSecond * 1000);
 
