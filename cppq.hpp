@@ -183,6 +183,7 @@ namespace cppq {
         this->retried = retried;
         this->dequeuedAtMs = dequeuedAtMs;
         this->state = stringToState(state);
+        this->schedule = schedule;
         this->cron = cron;
       }
       uuid_t uuid;
