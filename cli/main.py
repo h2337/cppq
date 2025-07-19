@@ -23,10 +23,10 @@ def decode_redis(src):
 def main():
     parser = argparse.ArgumentParser(description='cppq CLI')
     parser.add_argument('--redis_uri', dest='redis_uri', default='redis://localhost')
-    parser.add_argument('--queues', dest='queues', action='store_true', help='Print queues, priorities, and pause status ')
-    parser.add_argument('--stats', dest='stats', metavar=('QUEUE'), help='Print queue statistics')
-    parser.add_argument('--list', type=str, nargs=2, help='List task UUIDs in queue', metavar=('QUEUE', 'STATE'))
-    parser.add_argument('--task', type=str, nargs=2, help='Get task details', metavar=('QUEUE', 'UUID'))
+    parser.add_argument('--queues', dest='queues', action='store_true', help='print queues, priorities, and pause status ')
+    parser.add_argument('--stats', dest='stats', metavar=('QUEUE'), help='print queue statistics')
+    parser.add_argument('--list', type=str, nargs=2, help='list task UUIDs in queue', metavar=('QUEUE', 'STATE'))
+    parser.add_argument('--task', type=str, nargs=2, help='get task details', metavar=('QUEUE', 'UUID'))
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
