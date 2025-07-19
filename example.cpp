@@ -50,8 +50,8 @@ int main(int argc, char *argv[]) {
   // Enqueue the task
   cppq::enqueue(c, task);
 
-  // Second argument is time in seconds that task can be alive in active queue before being pushed back to pending queue (i.e. when worker dies in middle of execution)
-  // This call will not return
-  // It will loop forever checking the pending queue and processing tasks in thread pool
-  cppq::runServer(options, 1000000);
+  // Second argument is time in seconds that task can be alive in active queue
+  // before being pushed back to pending queue (i.e. when worker dies in middle of execution).
+  // This call will loop forever checking the pending queue and processing tasks in the thread pool.
+  cppq::runServer(options, 1000);
 }
