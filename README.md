@@ -22,7 +22,7 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 
 cppq is a header-only library with 2 dependecies: `libuuid` and `hiredis`.
 
-Just include the header: `#include "cppq.h"` and add these flags to your build "-luuid -lhiredis".
+Just include the header: `#include "cppq.h"` and add these flags to your build `-luuid -lhiredis`.
 
 `libuuid` and `hiredis` can be installed using your distro's package manager.
 
