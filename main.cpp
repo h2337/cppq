@@ -176,6 +176,7 @@ void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
   }
 
   Handler handler = handlers[task->type];
+
   try {
     handler(task);
   } catch(const std::exception &e) {
@@ -183,17 +184,27 @@ void taskRunner(redisOptions options, std::shared_ptr<Task> task) {
     redisCommand(c, "MULTI");
     redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task->uuid).c_str());
     redisCommand(c, "HSET cppq:task:%s retried %d", uuidToString(task->uuid).c_str(), task->retried);
-    if (task->retried >= task->maxRetry)
+    if (task->retried >= task->maxRetry) {
+      task->state = TaskState::Failed;
+      redisCommand(c, "HSET cppq:task:%s state %s", uuidToString(task->uuid).c_str(), stateToString(task->state).c_str());
       redisCommand(c, "LPUSH cppq:failed %s", uuidToString(task->uuid).c_str());
-    else
+    } else {
+      task->state = TaskState::Pending;
+      redisCommand(c, "HSET cppq:task:%s state %s", uuidToString(task->uuid).c_str(), stateToString(task->state).c_str());
       redisCommand(c, "LPUSH cppq:pending %s", uuidToString(task->uuid).c_str());
+    }
     redisCommand(c, "EXEC");
     redisFree(c);
     throw e;
   }
+
+  task->state = TaskState::Completed;
   redisCommand(c, "MULTI");
   redisCommand(c, "LREM cppq:active 1 %s", uuidToString(task->uuid).c_str());
+  redisCommand(c, "HSET cppq:task:%s state %s", uuidToString(task->uuid).c_str(), stateToString(task->state).c_str());
+  redisCommand(c, "HSET cppq:task:%s result %s", uuidToString(task->uuid).c_str(), task->result.dump().c_str());
   redisCommand(c, "LPUSH cppq:completed %s", uuidToString(task->uuid).c_str());
+  redisCommand(c, "EXEC");
   redisFree(c);
 }
 
