@@ -222,6 +222,22 @@ void runServer(redisOptions options) {
   }
 }
 
+void recovery(redisOptions options, uint64_t timeoutMs) {
+  redisContext *c = redisConnectWithOptions(&options);
+  if (c == NULL || c->err) {
+    std::cerr << "Faile to connect to Redis" << std::endl;
+    return;
+  }
+
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+    redisReply *reply = (redisReply *)redisCommand(c, "LRANGE cppq:active 0 -1");
+    for (int i = 0; i < reply->elements; i++) {
+      // if dequeuedAtMs + timeoutMs < now then put to pending queue
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
   handlers[TypeEmailDelivery] = &HandleEmailDeliveryTask;
   handlers[TypeImageResize] = &HandleImageResizeTask;
