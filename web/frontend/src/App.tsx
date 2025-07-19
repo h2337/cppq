@@ -1,14 +1,60 @@
-import { useState, useEffect } from 'react';
-import { Input, Button } from 'antd';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Input, Button, InputNumber } from 'antd';
 import { Routes, Route, useNavigate } from 'react-router-dom';
+import styled from 'styled-components';
 import logo from './cppq.png';
 import Dashboard from './Dashboard';
+import Queue from './Queue';
+import cppq from './cppq.png';
 import 'antd/dist/antd.min.css';
 import './App.css';
+
+const Header = styled.div`
+body {
+  font-family: Helvetica;
+  margin: 0;
+}
+
+a {
+  text-decoration: none;
+  color: #000;
+}
+
+.site-header {
+  border-bottom: 1px solid #ccc;
+  padding: .5em 1em;
+}
+
+.site-header::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.site-identity {
+  float: left;
+}
+
+.site-identity h1 {
+  font-size: 1.5em;
+  margin: .7em 0 .3em 0;
+  display: inline-block;
+}
+
+.site-identity img {
+  max-width: 55px;
+  float: left;
+  margin: 0 10px 0 0;
+}
+`;
 
 function App() {
   const [redisURI, setRedisURI] = useState('');
   const [error, setError] = useState(null);
+  const [refetch, setRefetch] = useState(new Date());
+  //const [refetchInterval, setRefetchInterval] = useState<ReturnType<typeof setInterval> | undefined>(undefined);
+  const refetchInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  let refetchInit = useRef(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,6 +83,22 @@ function App() {
       });
   };
 
+  const onUpdateIntervalChange = useCallback((value: any) => {
+    clearInterval(refetchInterval.current);
+    refetchInterval.current = setInterval(() => { setRefetch(new Date()) }, value * 1000)
+  }, [refetchInterval]);
+
+  useEffect(() => {
+    if (!refetchInit.current && refetchInterval.current === undefined) {
+      refetchInit.current = true;
+      onUpdateIntervalChange(5);
+    }
+  }, [refetchInterval, onUpdateIntervalChange]);
+
+  const onLogoClick = () => {
+    navigate('/dashboard');
+  };
+
   function RedisLogin() {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexFlow: 'wrap' }}>
@@ -50,9 +112,21 @@ function App() {
 
   return (
     <div>
+      <Header>
+        <header className="site-header">
+          <div className="site-identity">
+            <a onClick={onLogoClick}><img src={cppq} alt="cppq logo" /></a>
+          </div>
+          <div style={{ float: 'right' }}>
+            <span style={{ marginRight: '10px' }}>Update interval (seconds):</span>
+            <InputNumber min={1} max={10000} defaultValue={5} onChange={onUpdateIntervalChange} />
+          </div>
+        </header>
+      </Header>
       <Routes>
         <Route path="/" element={RedisLogin()} />
-        <Route path="/dashboard" element={Dashboard()} />
+        <Route path="/dashboard" element={Dashboard({ refetch })} />
+        <Route path="/queue/:name" element={<Queue />} />
       </Routes>
     </div>
   );

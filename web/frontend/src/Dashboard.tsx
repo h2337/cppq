@@ -1,59 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import styled from 'styled-components';
-import cppq from './cppq.png';
-import { Table, InputNumber } from 'antd';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Table } from 'antd';
 
-const Header = styled.div`
-body {
-  font-family: Helvetica;
-  margin: 0;
-}
-
-a {
-  text-decoration: none;
-  color: #000;
-}
-
-.site-header {
-  border-bottom: 1px solid #ccc;
-  padding: .5em 1em;
-}
-
-.site-header::after {
-  content: "";
-  display: table;
-  clear: both;
-}
-
-.site-identity {
-  float: left;
-}
-
-.site-identity h1 {
-  font-size: 1.5em;
-  margin: .7em 0 .3em 0;
-  display: inline-block;
-}
-
-.site-identity img {
-  max-width: 55px;
-  float: left;
-  margin: 0 10px 0 0;
-}
-`;
-
-function Dashboard() {
+function Dashboard(props: { refetch: Date }) {
   const [queues, setQueues] = useState<{ name: string, priority: string }[]>([]);
-  const [refetch, setRefetch] = useState(new Date());
-  const [refetchInterval, setRefetchInterval] = useState<ReturnType<typeof setInterval> | undefined>(undefined);
-  let refetchInit = false;
-
-  const onUpdateIntervalChange = useCallback((value: any) => {
-    setRefetchInterval((interval) => {
-      clearInterval(interval);
-      return setInterval(() => { setRefetch(new Date()) }, value * 1000)
-    });
-  }, []);
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function fetchQueues() {
@@ -72,14 +23,10 @@ function Dashboard() {
         });
     }
     fetchQueues();
-    if (!refetchInit && refetchInterval === undefined) {
-      refetchInit = true;
-      onUpdateIntervalChange(5);
-    }
-  }, [refetch, refetchInterval, onUpdateIntervalChange]);
+  }, [props.refetch]);
 
   const onQueueClick = (queue: string) => {
-    console.log(queue);
+    navigate('/queue/' + queue);
   };
 
   const columns = [
@@ -132,17 +79,6 @@ function Dashboard() {
   ];
 
   return (<>
-  <Header>
-    <header className="site-header">
-      <div className="site-identity">
-        <a href="/"><img src={cppq} alt="cppq logo" /></a>
-      </div>
-      <div style={{ float: 'right' }}>
-        <span style={{ marginRight: '10px' }}>Update interval (seconds):</span>
-        <InputNumber min={1} max={10000} defaultValue={5} onChange={onUpdateIntervalChange} />
-      </div>
-    </header>
-  </Header>
   <Table dataSource={queues} columns={columns} />
 </>);
 }
