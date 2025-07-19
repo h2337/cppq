@@ -263,8 +263,8 @@ namespace cppq {
     return std::make_optional<Task>(task);
   }
 
-  void taskRunner(redisOptions options, Task task) {
-    redisContext *c = redisConnectWithOptions(&options);
+  void taskRunner(redisOptions redisOpts, Task task) {
+    redisContext *c = redisConnectWithOptions(&redisOpts);
     if (c == NULL || c->err) {
       std::cerr << "Failed to connect to Redis" << std::endl;
       return;
@@ -323,8 +323,8 @@ namespace cppq {
     redisFree(c);
   }
 
-  void recovery(redisOptions options, uint64_t timeoutMs, uint64_t checkEveryMs) {
-    redisContext *c = redisConnectWithOptions(&options);
+  void recovery(redisOptions redisOpts, uint64_t timeoutMs, uint64_t checkEveryMs) {
+    redisContext *c = redisConnectWithOptions(&redisOpts);
     if (c == NULL || c->err) {
       std::cerr << "Failed to connect to Redis" << std::endl;
       return;
@@ -362,8 +362,8 @@ namespace cppq {
     }
   }
 
-  void runServer(redisOptions options, uint64_t recoveryTimeoutSecond) {
-    redisContext *c = redisConnectWithOptions(&options);
+  void runServer(redisOptions redisOpts, uint64_t recoveryTimeoutSecond) {
+    redisContext *c = redisConnectWithOptions(&redisOpts);
     if (c == NULL || c->err) {
       std::cerr << "Failed to connect to Redis" << std::endl;
       return;
@@ -371,13 +371,13 @@ namespace cppq {
 
     thread_pool pool;
 
-    pool.push_task(recovery, options, recoveryTimeoutSecond * 1000, 10000);
+    pool.push_task(recovery, redisOpts, recoveryTimeoutSecond * 1000, 10000);
 
     while (true) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       std::optional<Task> task = dequeue(c);
       if (task.has_value())
-        pool.push_task(taskRunner, options, task.value());
+        pool.push_task(taskRunner, redisOpts, task.value());
     }
   }
 }

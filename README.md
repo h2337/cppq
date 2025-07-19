@@ -83,9 +83,9 @@ int main(int argc, char *argv[]) {
   cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
 
   // Create a Redis connection for enqueuing, you can reuse this for subsequent enqueues
-  redisOptions options = {0};
-  REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
-  redisContext *c = redisConnectWithOptions(&options);
+  redisOptions redisOpts = {0};
+  REDIS_OPTIONS_SET_TCP(&redisOpts, "127.0.0.1", 6379);
+  redisContext *c = redisConnectWithOptions(&redisOpts);
   if (c == NULL || c->err) {
     std::cerr << "Failed to connect to Redis" << std::endl;
     return 1;
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
   // Second argument is time in seconds that task can be alive in active queue
   // before being pushed back to pending queue (i.e. when worker dies in middle of execution).
   // This call will loop forever checking the pending queue and processing tasks in the thread pool.
-  cppq::runServer(options, 1000);
+  cppq::runServer(redisOpts, 1000);
 }
 ```
 
