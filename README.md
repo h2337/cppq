@@ -20,13 +20,13 @@ Task queues are used as a mechanism to distribute work across multiple machines.
 
 ## Quickstart
 
-cppq is a header-only library with 2 dependecies: `libuuid` and `hiredis`.
+cppq is a header-only library with 3 dependecies: `libuuid`, `hiredis`, `nlohmann_json`.
 
 Just include the header: `#include "cppq.h"` and add these flags to your build `-luuid -lhiredis`.
 
 `libuuid` and `hiredis` can be installed using your distro's package manager.
 
-For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs`
+For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs nlohmann-json`
 
 ## Example
 
