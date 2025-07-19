@@ -121,6 +121,7 @@ namespace cppq {
   enum class TaskState {
     Unknown,
     Pending,
+    Scheduled,
     Active,
     Failed,
     Completed
@@ -130,6 +131,7 @@ namespace cppq {
     switch (state) {
       case TaskState::Unknown: return "Unknown";
       case TaskState::Pending: return "Pending";
+      case TaskState::Scheduled: return "Scheduled";
       case TaskState::Active: return "Active";
       case TaskState::Failed: return "Failed";
       case TaskState::Completed: return "Completed";
@@ -140,6 +142,7 @@ namespace cppq {
   TaskState stringToState(std::string state) {
     if (state.compare("Unknown") == 0) return TaskState::Unknown;
     if (state.compare("Pending") == 0) return TaskState::Pending;
+    if (state.compare("Scheduled") == 0) return TaskState::Scheduled;
     if (state.compare("Active") == 0) return TaskState::Active;
     if (state.compare("Failed") == 0) return TaskState::Failed;
     if (state.compare("Completed") == 0) return TaskState::Completed;
@@ -224,7 +227,10 @@ namespace cppq {
   }
 
   void enqueue(redisContext *c, Task task, std::string queue, ScheduleOptions s) {
-    task.state = TaskState::Pending;
+    if (s.type == ScheduleType::None)
+      task.state = TaskState::Pending;
+    else
+      task.state = TaskState::Scheduled;
 
     redisCommand(c, "MULTI");
     if (s.type == ScheduleType::None) {
