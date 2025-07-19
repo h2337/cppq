@@ -79,6 +79,11 @@ function Queue(props: { refetch: Date }) {
       dataIndex: 'dequeuedAt',
       key: 'dequeuedAt',
     },
+    {
+      title: 'Result',
+      dataIndex: 'result',
+      key: 'result',
+    },
   ];
   const failedColumns = [
     ...commonColumns,
