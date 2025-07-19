@@ -11,6 +11,7 @@ function Dashboard(props: { refetch: Date }) {
       await fetch('http://localhost:5000/queue', { method: 'GET' })
         .then((response) => response.json())
         .then(async (body) => {
+          if (!body.connected) navigate('/');
           let processedQueues = [];
           let key = 1;
           for (const queue of body.queues) {

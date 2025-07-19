@@ -20,9 +20,9 @@ def connect():
             return { 'success': False, 'error': str(e) }
         return { 'success': True }
     elif request.method == 'GET':
-        if redisClient is not None:
-            return { 'connected': True }
-        else:
+        try:
+            redisClient.ping()
+        except Exception as e:
             return { 'connected': False }
     return {}
 
@@ -50,4 +50,7 @@ def queueStats(queue):
 
 @app.route('/queue', methods = ['GET'])
 def queues():
-    return { 'queues': [x.decode('ascii') for x in list(redisClient.smembers('cppq:queues'))] }
+    try:
+        return { 'connected': True, 'queues': [x.decode('ascii') for x in list(redisClient.smembers('cppq:queues'))] }
+    except Exception as e:
+        return { 'connected': False }
