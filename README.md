@@ -102,7 +102,12 @@ int main(int argc, char *argv[]) {
   // Enqueue a task on high priority queue
   cppq::enqueue(c, task2, "high");
   // Enqueue a task on default queue to be run at exactly 1 minute from now
-  cppq::enqueue(c, task3, "default", cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1)));
+  cppq::enqueue(
+    c,
+    task3,
+    "default",
+    cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1))
+  );
 
 
   // This call will loop forever checking the pending queue and processing tasks in the thread pool.
