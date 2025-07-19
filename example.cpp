@@ -48,5 +48,8 @@ int main(int argc, char *argv[]) {
   cppq::enqueue(c, task2, "high");
   cppq::enqueue(c, task3, "default", cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1)));
 
+  cppq::pause(c, "default");
+  cppq::unpause(c, "default");
+
   cppq::runServer(redisOpts, {{"low", 5}, {"default", 10}, {"high", 20}}, 1000);
 }

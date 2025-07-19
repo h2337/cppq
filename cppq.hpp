@@ -486,9 +486,25 @@ namespace cppq {
     }
   }
 
+  void pause(redisContext *c, std::string queue) {
+    redisCommand(c, "SADD cppq:queues:paused %s", queue.c_str());
+  }
+
+  void unpause(redisContext *c, std::string queue) {
+    redisCommand(c, "SREM cppq:queues:paused %s", queue.c_str());
+  }
+
+  bool isPaused(redisContext *c, std::string queue) {
+    redisReply *reply = (redisReply *)redisCommand(c, "SMEMBERS cppq:queues:paused");
+    for (int i = 0; i < reply->elements; i++)
+      if (queue == reply->element[i]->str)
+        return true;
+    return false;
+  }
+
   const char *getScheduledScript = R"DOC(
     local timeCall = redis.call('time')
-    local time = timeCall[1] ..timeCall[2]
+    local time = timeCall[1] .. timeCall[2]
     local scheduled = redis.call('LRANGE',  'cppq:' .. ARGV[1] .. ':scheduled', 0, -1)
     for _, key in ipairs(scheduled) do
       if (time > redis.call('HGET', 'cppq:' .. ARGV[1] .. ':task:' .. key, 'schedule')) then
@@ -523,6 +539,8 @@ namespace cppq {
     while (true) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       for (std::vector<std::pair<std::string, int>>::iterator it = queuesVector.begin(); it != queuesVector.end(); it++) {
+        if (isPaused(c, it->first))
+            continue;
         std::optional<Task> task;
         task = dequeueScheduled(c, it->first, getScheduledScriptSHA);
         if (!task.has_value())
