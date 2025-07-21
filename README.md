@@ -175,27 +175,82 @@ The web UI provides a modern dashboard to monitor and control your cppq queues a
 - **Backend**: Next.js API routes
 - **Database**: Redis (via node-redis)
 
+For detailed documentation, see [web/README.md](web/README.md).
+
 ## CLI
 
-CLI can be run with: `cd cli && pip3 install -r requirements && python3 main.py`
+A modern, feature-rich command-line interface for managing cppq queues and tasks.
 
-CLI is made with Python. It is still work-in-progress.
+### Features
+- Modern CLI framework with intuitive commands
+- Rich formatted output with color support
+- Multiple output formats (table, JSON, pretty-print)
+- Configuration file and environment variable support
+- Comprehensive error handling and logging
+- Type-safe with full type hints
 
+### Quick Start
+
+1. Navigate to the CLI directory:
+   ```bash
+   cd cli
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip3 install -r requirements.txt
+   ```
+
+3. Run the CLI:
+   ```bash
+   python3 main.py --help
+   ```
+
+### Usage Examples
+
+```bash
+# List all queues with colored status
+python3 main.py queues
+
+# Get queue statistics
+python3 main.py stats myqueue
+
+# List tasks in different states
+python3 main.py list myqueue pending
+python3 main.py list myqueue active --limit 10
+
+# Get task details
+python3 main.py task myqueue 123e4567-e89b-12d3-a456-426614174000
+
+# Pause/unpause queues
+python3 main.py pause myqueue
+python3 main.py unpause myqueue
+
+# Different output formats
+python3 main.py queues --format json
+python3 main.py stats myqueue --format table
+
+# Enable debug logging
+python3 main.py --debug queues
+
+# Use custom Redis URI
+python3 main.py --redis-uri redis://myserver:6379 queues
 ```
-usage: main.py [-h] [--redis_uri REDIS_URI] [--queues] [--stats QUEUE] [--list QUEUE STATE] [--task QUEUE UUID] [--pause QUEUE] [--unpause QUEUE]
 
-cppq CLI
+### Configuration
 
-options:
-  -h, --help            show this help message and exit
-  --redis_uri REDIS_URI
-  --queues              print queues, priorities, and pause status
-  --stats QUEUE         print queue statistics
-  --list QUEUE STATE    list task UUIDs in queue
-  --task QUEUE UUID     get task details
-  --pause QUEUE         pause a queue
-  --unpause QUEUE       unpause a queue
+The CLI supports configuration through:
+- Command-line arguments (highest priority)
+- Environment variables (e.g., `REDIS_URI`, `CPPQ_OUTPUT_FORMAT`)
+- Configuration file (`~/.config/cppq/config.json`)
+- Default values
+
+Create a configuration file:
+```bash
+python3 main.py config --create
 ```
+
+For detailed documentation, see [cli/README.md](cli/README.md).
 
 ## License
 
