@@ -3,6 +3,7 @@
 #include <hiredis/hiredis.h>
 #include <uuid/uuid.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>

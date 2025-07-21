@@ -125,7 +125,8 @@ int main(int argc, char *argv[]) {
   // Unpause queue to continue processing tasks from it
   cppq::unpause(c, "default");
 
-  // This call will loop forever checking the pending queue and processing tasks in the thread pool.
+  // This call will loop forever checking the pending queue
+  // and processing tasks in the thread pool.
   // Second argument defines queues and their priorities.
   // Third argument is time in seconds that task can be alive in active queue
   // before being pushed back to pending queue (i.e. when worker dies in middle of execution).
@@ -135,11 +136,44 @@ int main(int argc, char *argv[]) {
 
 ## Web UI
 
-If you are on Linux then web UI can be started by running: `cd web && ./start.sh`
+The web UI provides a modern dashboard to monitor and control your cppq queues and tasks.
 
-Web UI is made with React/TypeScript and Flask/Python. It is still work-in-progress.
+### Features
+- Real-time queue monitoring with auto-refresh
+- Queue statistics and performance metrics visualization
+- Task inspection by state (pending, scheduled, active, completed, failed)
+- Queue pause/unpause functionality
+- Task search and filtering
+- Export queue and task data to CSV
+- Dark mode support
+- Responsive design
 
-![Web UI demo](https://github.com/h2337/file-hosting/blob/0c98fb2b0d18503364acc5d731a41da604126985/cppq-web-demo-2.gif?raw=true)
+### Running the Web UI
+
+1. Navigate to the web directory:
+   ```bash
+   cd web
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+4. Open http://localhost:3000 in your browser
+
+5. Connect to your Redis instance (default: `redis://localhost:6379`)
+
+### Technology Stack
+- **Frontend**: Next.js 15, React 19, TypeScript
+- **Styling**: Tailwind CSS v4
+- **Backend**: Next.js API routes
+- **Database**: Redis (via node-redis)
 
 ## CLI
 
