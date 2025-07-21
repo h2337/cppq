@@ -7,8 +7,8 @@ echo "Building Catch2 tests for cppq..."
 
 # Compile the test file
 g++ -std=c++17 \
-    test_catch2.cpp \
-    -o test_catch2 \
+    tests.cpp \
+    -o tests \
     -I. \
     -lCatch2Main -lCatch2 \
     -lhiredis \
