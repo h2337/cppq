@@ -393,14 +393,6 @@ inline TaskState stringToState(std::string_view state) noexcept {
   return TaskState::Unknown;
 }
 
-// Deprecated: Use UUID class instead
-[[deprecated("Use UUID class instead")]]
-std::string uuidToString(uuid_t uuid) {
-  char uuid_str[37];
-  uuid_unparse_lower(uuid, uuid_str);
-  return uuid_str;
-}
-
 class Task {
  public:
   Task(std::string type, std::string payload, uint64_t maxRetry)
@@ -411,10 +403,7 @@ class Task {
         maxRetry(maxRetry),
         retried(0),
         dequeuedAtMs(0),
-        schedule(0) {
-    // Initialize legacy uuid field for backward compatibility
-    getUuidLegacy(uuid);
-  }
+        schedule(0) {}
 
   Task(std::string_view uuid_str, std::string type, std::string payload,
        std::string_view state_str, uint64_t maxRetry, uint64_t retried,
@@ -427,10 +416,7 @@ class Task {
         retried(retried),
         dequeuedAtMs(dequeuedAtMs),
         schedule(schedule),
-        cron(std::move(cron)) {
-    // Initialize legacy uuid field for backward compatibility
-    getUuidLegacy(uuid);
-  }
+        cron(std::move(cron)) {}
 
   Task(const Task &) = default;
   Task(Task &&) = default;
@@ -439,12 +425,6 @@ class Task {
 
   const UUID &getUuid() const noexcept { return uuid_; }
   std::string getUuidString() const { return uuid_.toString(); }
-
-  // For backward compatibility
-  void getUuidLegacy(uuid_t out) const {
-    const auto &data = uuid_.data();
-    std::copy(data.begin(), data.end(), out);
-  }
 
   UUID uuid_;
   std::string type;
@@ -456,9 +436,6 @@ class Task {
   uint64_t schedule;
   std::string cron;
   std::string result;
-
-  // Provide backward compatibility
-  uuid_t uuid;  // Deprecated, kept for compatibility
 };
 
 using Handler = void (*)(Task &);

@@ -51,9 +51,7 @@ class RedisTestFixture {
     return test_queue_prefix + suffix;
   }
 
-  std::string getTaskId(const Task& task) {
-    return uuidToString(const_cast<uuid_t&>(task.uuid));
-  }
+  std::string getTaskId(const Task& task) { return task.getUuidString(); }
 };
 
 TEST_CASE_METHOD(RedisTestFixture, "Basic enqueue and dequeue operations",
@@ -120,7 +118,7 @@ TEST_CASE_METHOD(RedisTestFixture, "Basic enqueue and dequeue operations",
     for (int i = 0; i < num_tasks; i++) {
       auto task = cppq::dequeue(ctx.get(), queue_name);
       REQUIRE(task.has_value());
-      std::string dequeued_id = uuidToString(task->uuid);
+      std::string dequeued_id = task->getUuidString();
       REQUIRE(dequeued_id == task_ids[i]);
 
       json data = json::parse(task->payload);
@@ -140,7 +138,7 @@ TEST_CASE_METHOD(RedisTestFixture, "Basic enqueue and dequeue operations",
 
     auto dequeued = cppq::dequeue(ctx.get(), queue_name);
     REQUIRE(dequeued.has_value());
-    std::string dequeued_id = uuidToString(dequeued->uuid);
+    std::string dequeued_id = dequeued->getUuidString();
     REQUIRE(dequeued_id == expected_id);
 
     // Check task is in active queue
@@ -215,7 +213,7 @@ TEST_CASE_METHOD(RedisTestFixture, "Task scheduling functionality",
     // Now task should be available
     dequeued = cppq::dequeue(ctx.get(), queue_name);
     REQUIRE(dequeued.has_value());
-    std::string dequeued_id = uuidToString(dequeued->uuid);
+    std::string dequeued_id = dequeued->getUuidString();
     REQUIRE(dequeued_id == task_id);
   }
 
@@ -326,7 +324,7 @@ TEST_CASE_METHOD(RedisTestFixture, "Task recovery mechanism", "[recovery]") {
     // Dequeue task (makes it active with current timestamp)
     auto dequeued = cppq::dequeue(ctx.get(), queue_name);
     REQUIRE(dequeued.has_value());
-    std::string task_id = uuidToString(dequeued->uuid);
+    std::string task_id = dequeued->getUuidString();
 
     // Verify the task has a recent dequeuedAtMs
     auto check_reply = (redisReply*)redisCommand(
@@ -429,7 +427,7 @@ TEST_CASE_METHOD(RedisTestFixture, "Queue pause and unpause functionality",
     // Dequeue should work
     auto dequeued = cppq::dequeue(ctx.get(), queue_name);
     REQUIRE(dequeued.has_value());
-    std::string dequeued_id = uuidToString(dequeued->uuid);
+    std::string dequeued_id = dequeued->getUuidString();
     REQUIRE(dequeued_id == task_id);
   }
 
@@ -662,7 +660,7 @@ TEST_CASE_METHOD(RedisTestFixture, "Error handling and edge cases",
     // Should be able to dequeue
     auto dequeued = cppq::dequeue(ctx.get(), "");
     REQUIRE(dequeued.has_value());
-    std::string dequeued_id = uuidToString(dequeued->uuid);
+    std::string dequeued_id = dequeued->getUuidString();
     REQUIRE(dequeued_id == task_id);
   }
 
@@ -674,7 +672,7 @@ TEST_CASE_METHOD(RedisTestFixture, "Error handling and edge cases",
 
     auto dequeued = cppq::dequeue(ctx.get(), queue_name);
     REQUIRE(dequeued.has_value());
-    std::string dequeued_id = uuidToString(dequeued->uuid);
+    std::string dequeued_id = dequeued->getUuidString();
     std::string task_id = getTaskId(task);
     REQUIRE(dequeued_id == task_id);
 
