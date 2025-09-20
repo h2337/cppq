@@ -18,15 +18,17 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace cppq {
-const char *enqueueScript = R"DOC(
+inline constexpr char enqueueScript[] = R"DOC(
     local queue = ARGV[1]
     local uuid = ARGV[2]
     local type = ARGV[3]
@@ -59,7 +61,7 @@ const char *enqueueScript = R"DOC(
     return 'OK'
 )DOC";
 
-const char *dequeueScript = R"DOC(
+inline constexpr char dequeueScript[] = R"DOC(
     local queue = ARGV[1]
     local dequeuedAtMs = ARGV[2]
 
@@ -78,7 +80,7 @@ const char *dequeueScript = R"DOC(
     return {uuid, task}
 )DOC";
 
-const char *dequeueScheduledScript = R"DOC(
+inline constexpr char dequeueScheduledScript[] = R"DOC(
     local queue = ARGV[1]
     local dequeuedAtMs = ARGV[2]
     local getScheduledSHA = ARGV[3]
@@ -97,7 +99,7 @@ const char *dequeueScheduledScript = R"DOC(
     return {uuid, task}
 )DOC";
 
-const char *taskSuccessScript = R"DOC(
+inline constexpr char taskSuccessScript[] = R"DOC(
     local queue = ARGV[1]
     local uuid = ARGV[2]
     local result = ARGV[3]
@@ -108,7 +110,7 @@ const char *taskSuccessScript = R"DOC(
     return 'OK'
 )DOC";
 
-const char *taskFailureScript = R"DOC(
+inline constexpr char taskFailureScript[] = R"DOC(
     local queue = ARGV[1]
     local uuid = ARGV[2]
     local retried = ARGV[3]
@@ -127,7 +129,7 @@ const char *taskFailureScript = R"DOC(
     return 'OK'
 )DOC";
 
-const char *recoveryScript = R"DOC(
+inline constexpr char recoveryScript[] = R"DOC(
     local queue = ARGV[1]
     local uuid = ARGV[2]
     local hasSchedule = ARGV[3]
@@ -143,7 +145,7 @@ const char *recoveryScript = R"DOC(
     return 'OK'
 )DOC";
 
-const char *getScheduledScript = R"DOC(
+inline constexpr char getScheduledScript[] = R"DOC(
     local timeCall = redis.call('time')
     local time = timeCall[1] .. timeCall[2]
     local scheduled = redis.call('LRANGE',  'cppq:' .. ARGV[1] .. ':scheduled', 0, -1)
@@ -439,37 +441,131 @@ class Task {
 };
 
 using Handler = void (*)(Task &);
-auto handlers = std::unordered_map<std::string, Handler>();
+namespace detail {
+struct RedisReplyDeleter {
+  void operator()(redisReply *reply) const noexcept {
+    if (reply) freeReplyObject(reply);
+  }
+};
 
-void registerHandler(std::string_view type, Handler handler) {
-  handlers[std::string(type)] = handler;
+using RedisReplyPtr = std::unique_ptr<redisReply, RedisReplyDeleter>;
+
+struct ScriptCache {
+  std::once_flag flag;
+  std::string sha;
+};
+
+struct HandlerRegistry {
+  std::unordered_map<std::string, Handler> handlers;
+  std::shared_mutex mutex;
+};
+
+inline HandlerRegistry &handlerRegistry() {
+  static HandlerRegistry instance;
+  return instance;
 }
 
-typedef enum { Cron, TimePoint, None } ScheduleType;
+inline std::optional<Handler> getHandler(std::string_view type) {
+  auto &registry = handlerRegistry();
+  std::shared_lock<std::shared_mutex> lock(registry.mutex);
+  auto it = registry.handlers.find(std::string(type));
+  if (it == registry.handlers.end()) return std::nullopt;
+  return it->second;
+}
 
-typedef struct ScheduleOptions {
-  union {
-    const char *cron;
-    std::chrono::system_clock::time_point time;
-  };
-  ScheduleType type;
-} ScheduleOptions;
+inline const std::string &ensureScriptLoaded(redisContext *c,
+                                             const char *script,
+                                             ScriptCache &cache, ErrorCode code,
+                                             std::string_view context) {
+  std::call_once(cache.flag, [&]() {
+    RedisReplyPtr reply(
+        static_cast<redisReply *>(redisCommand(c, "SCRIPT LOAD %s", script)));
+    if (!reply || reply->type != REDIS_REPLY_STRING) {
+      std::string error_msg(context);
+      if (reply && reply->str) {
+        error_msg.append(": ").append(reply->str);
+      }
+      throw CppqException(code, error_msg);
+    }
+    cache.sha = reply->str;
+  });
 
-ScheduleOptions scheduleOptions(
+  if (cache.sha.empty()) {
+    throw CppqException(code, std::string(context));
+  }
+
+  return cache.sha;
+}
+
+inline ScriptCache &enqueueScriptCache() {
+  static ScriptCache cache;
+  return cache;
+}
+
+inline ScriptCache &dequeueScriptCache() {
+  static ScriptCache cache;
+  return cache;
+}
+
+inline ScriptCache &dequeueScheduledScriptCache() {
+  static ScriptCache cache;
+  return cache;
+}
+
+inline ScriptCache &taskSuccessScriptCache() {
+  static ScriptCache cache;
+  return cache;
+}
+
+inline ScriptCache &taskFailureScriptCache() {
+  static ScriptCache cache;
+  return cache;
+}
+
+inline ScriptCache &recoveryScriptCache() {
+  static ScriptCache cache;
+  return cache;
+}
+
+inline ScriptCache &getScheduledScriptCache() {
+  static ScriptCache cache;
+  return cache;
+}
+}  // namespace detail
+
+inline void registerHandler(std::string_view type, Handler handler) {
+  auto &registry = detail::handlerRegistry();
+  std::unique_lock<std::shared_mutex> lock(registry.mutex);
+  registry.handlers[std::string(type)] = handler;
+}
+
+enum class ScheduleType { None, Cron, TimePoint };
+
+struct ScheduleOptions {
+  ScheduleType type{ScheduleType::None};
+  std::optional<std::chrono::system_clock::time_point> timePoint;
+  std::optional<std::string> cronExpression;
+};
+
+inline ScheduleOptions scheduleOptions(
     std::chrono::system_clock::time_point t) noexcept {
-  return ScheduleOptions{.time = t, .type = ScheduleType::TimePoint};
+  ScheduleOptions options;
+  options.type = ScheduleType::TimePoint;
+  options.timePoint = t;
+  return options;
 }
 
-ScheduleOptions scheduleOptions(std::string_view c) noexcept {
-  return ScheduleOptions{.cron = c.data(), .type = ScheduleType::Cron};
+inline ScheduleOptions scheduleOptions(std::string_view c) {
+  ScheduleOptions options;
+  options.type = ScheduleType::Cron;
+  options.cronExpression = std::string(c);
+  return options;
 }
 
 void enqueue(redisContext *c, Task &task, std::string_view queue,
              ScheduleOptions s) {
-  if (s.type == ScheduleType::None)
-    task.state = TaskState::Pending;
-  else
-    task.state = TaskState::Scheduled;
+  task.state =
+      s.type == ScheduleType::None ? TaskState::Pending : TaskState::Scheduled;
 
   std::string uuid_str = task.getUuidString();
   const char *state_str = stateToString(task.state);
@@ -477,82 +573,74 @@ void enqueue(redisContext *c, Task &task, std::string_view queue,
   std::string scheduleType;
   std::string scheduleValue;
 
-  if (s.type == ScheduleType::None) {
-    scheduleType = "none";
-    scheduleValue = "";
-  } else if (s.type == ScheduleType::TimePoint) {
-    scheduleType = "time";
-    scheduleValue =
-        std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                           s.time.time_since_epoch())
-                           .count());
-  } else if (s.type == ScheduleType::Cron) {
-    scheduleType = "cron";
-    scheduleValue = s.cron;
-  }
-
-  static std::string enqueueScriptSHA;
-  if (enqueueScriptSHA.empty()) {
-    redisReply *reply =
-        (redisReply *)redisCommand(c, "SCRIPT LOAD %s", enqueueScript);
-    if (reply && reply->type == REDIS_REPLY_STRING) {
-      enqueueScriptSHA = reply->str;
-      freeReplyObject(reply);
-    } else {
-      if (reply) freeReplyObject(reply);
-      throw CppqException(ErrorCode::EnqueueFailed,
-                          "Failed to load enqueue script");
+  switch (s.type) {
+    case ScheduleType::None:
+      scheduleType = "none";
+      break;
+    case ScheduleType::TimePoint: {
+      if (!s.timePoint.has_value()) {
+        throw CppqException(
+            ErrorCode::InvalidTask,
+            "ScheduleOptions missing time point for time-based schedule");
+      }
+      scheduleType = "time";
+      scheduleValue =
+          std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                             s.timePoint.value().time_since_epoch())
+                             .count());
+      break;
+    }
+    case ScheduleType::Cron: {
+      if (!s.cronExpression.has_value()) {
+        throw CppqException(ErrorCode::InvalidTask,
+                            "ScheduleOptions missing cron expression");
+      }
+      scheduleType = "cron";
+      scheduleValue = s.cronExpression.value();
+      break;
     }
   }
 
-  redisReply *reply = (redisReply *)redisCommand(
-      c, "EVALSHA %s 0 %s %s %s %s %s %d %d %d %s %s", enqueueScriptSHA.c_str(),
+  const auto &enqueueScriptSHA = detail::ensureScriptLoaded(
+      c, enqueueScript, detail::enqueueScriptCache(), ErrorCode::EnqueueFailed,
+      "Failed to load enqueue script");
+
+  const auto maxRetryStr = std::to_string(task.maxRetry);
+  const auto retriedStr = std::to_string(task.retried);
+  const auto dequeuedAtMsStr = std::to_string(task.dequeuedAtMs);
+
+  detail::RedisReplyPtr reply(static_cast<redisReply *>(redisCommand(
+      c, "EVALSHA %s 0 %s %s %s %s %s %s %s %s %s %s", enqueueScriptSHA.c_str(),
       queue.data(), uuid_str.c_str(), task.type.c_str(), task.payload.c_str(),
-      state_str, task.maxRetry, task.retried, task.dequeuedAtMs,
-      scheduleType.c_str(), scheduleValue.c_str());
+      state_str, maxRetryStr.c_str(), retriedStr.c_str(),
+      dequeuedAtMsStr.c_str(), scheduleType.c_str(), scheduleValue.c_str())));
 
   if (!reply || reply->type == REDIS_REPLY_ERROR) {
     std::string error_msg =
-        reply ? reply->str : "Failed to execute Redis command";
-    if (reply) freeReplyObject(reply);
+        reply && reply->str ? reply->str : "Failed to execute Redis command";
     throw CppqException(ErrorCode::EnqueueFailed, error_msg);
   }
-  freeReplyObject(reply);
 }
 
 void enqueue(redisContext *c, Task &task, std::string_view queue) {
-  return enqueue(c, task, queue,
-                 ScheduleOptions{.cron = "", .type = ScheduleType::None});
+  return enqueue(c, task, queue, ScheduleOptions{});
 }
 
 void enqueueBatch(redisContext *c,
                   std::vector<std::reference_wrapper<Task>> &tasks,
                   std::string_view queue,
-                  ScheduleOptions s = ScheduleOptions{
-                      .cron = "", .type = ScheduleType::None}) {
+                  ScheduleOptions s = ScheduleOptions{}) {
   if (tasks.empty()) return;
 
-  static std::string enqueueScriptSHA;
-  if (enqueueScriptSHA.empty()) {
-    redisReply *reply =
-        (redisReply *)redisCommand(c, "SCRIPT LOAD %s", enqueueScript);
-    if (reply && reply->type == REDIS_REPLY_STRING) {
-      enqueueScriptSHA = reply->str;
-      freeReplyObject(reply);
-    } else {
-      if (reply) freeReplyObject(reply);
-      throw CppqException(ErrorCode::EnqueueFailed,
-                          "Failed to load enqueue script");
-    }
-  }
+  const auto &enqueueScriptSHA = detail::ensureScriptLoaded(
+      c, enqueueScript, detail::enqueueScriptCache(), ErrorCode::EnqueueFailed,
+      "Failed to load enqueue script");
 
   for (auto &task_ref : tasks) {
     Task &task = task_ref.get();
 
-    if (s.type == ScheduleType::None)
-      task.state = TaskState::Pending;
-    else
-      task.state = TaskState::Scheduled;
+    task.state = s.type == ScheduleType::None ? TaskState::Pending
+                                              : TaskState::Scheduled;
 
     std::string uuid_str = task.getUuidString();
     const char *state_str = stateToString(task.state);
@@ -560,34 +648,50 @@ void enqueueBatch(redisContext *c,
     std::string scheduleType;
     std::string scheduleValue;
 
-    if (s.type == ScheduleType::None) {
-      scheduleType = "none";
-      scheduleValue = "";
-    } else if (s.type == ScheduleType::TimePoint) {
-      scheduleType = "time";
-      scheduleValue =
-          std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                             s.time.time_since_epoch())
-                             .count());
-    } else if (s.type == ScheduleType::Cron) {
-      scheduleType = "cron";
-      scheduleValue = s.cron;
+    switch (s.type) {
+      case ScheduleType::None:
+        scheduleType = "none";
+        break;
+      case ScheduleType::TimePoint: {
+        if (!s.timePoint.has_value()) {
+          throw CppqException(
+              ErrorCode::InvalidTask,
+              "ScheduleOptions missing time point for time-based schedule");
+        }
+        scheduleType = "time";
+        scheduleValue = std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                s.timePoint.value().time_since_epoch())
+                .count());
+        break;
+      }
+      case ScheduleType::Cron: {
+        if (!s.cronExpression.has_value()) {
+          throw CppqException(ErrorCode::InvalidTask,
+                              "ScheduleOptions missing cron expression");
+        }
+        scheduleType = "cron";
+        scheduleValue = s.cronExpression.value();
+        break;
+      }
     }
 
-    redisReply *reply = (redisReply *)redisCommand(
-        c, "EVALSHA %s 0 %s %s %s %s %s %d %d %d %s %s",
+    const auto maxRetryStr = std::to_string(task.maxRetry);
+    const auto retriedStr = std::to_string(task.retried);
+    const auto dequeuedAtMsStr = std::to_string(task.dequeuedAtMs);
+
+    detail::RedisReplyPtr reply(static_cast<redisReply *>(redisCommand(
+        c, "EVALSHA %s 0 %s %s %s %s %s %s %s %s %s %s",
         enqueueScriptSHA.c_str(), queue.data(), uuid_str.c_str(),
-        task.type.c_str(), task.payload.c_str(), state_str, task.maxRetry,
-        task.retried, task.dequeuedAtMs, scheduleType.c_str(),
-        scheduleValue.c_str());
+        task.type.c_str(), task.payload.c_str(), state_str, maxRetryStr.c_str(),
+        retriedStr.c_str(), dequeuedAtMsStr.c_str(), scheduleType.c_str(),
+        scheduleValue.c_str())));
 
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
       std::string error_msg =
-          reply ? reply->str : "Failed to execute Redis command";
-      if (reply) freeReplyObject(reply);
+          reply && reply->str ? reply->str : "Failed to execute Redis command";
       throw CppqException(ErrorCode::EnqueueFailed, error_msg);
     }
-    freeReplyObject(reply);
   }
 }
 
@@ -597,31 +701,21 @@ std::optional<Task> dequeue(redisContext *c, std::string_view queue) {
           std::chrono::system_clock::now().time_since_epoch())
           .count();
 
-  static std::string dequeueScriptSHA;
-  if (dequeueScriptSHA.empty()) {
-    redisReply *reply =
-        (redisReply *)redisCommand(c, "SCRIPT LOAD %s", dequeueScript);
-    if (reply && reply->type == REDIS_REPLY_STRING) {
-      dequeueScriptSHA = reply->str;
-      freeReplyObject(reply);
-    } else {
-      if (reply) freeReplyObject(reply);
-      throw CppqException(ErrorCode::DequeueFailed,
-                          "Failed to load dequeue script");
-    }
-  }
+  const auto &dequeueScriptSHA = detail::ensureScriptLoaded(
+      c, dequeueScript, detail::dequeueScriptCache(), ErrorCode::DequeueFailed,
+      "Failed to load dequeue script");
 
-  redisReply *reply = (redisReply *)redisCommand(c, "EVALSHA %s 0 %s %lu",
-                                                 dequeueScriptSHA.c_str(),
-                                                 queue.data(), dequeuedAtMs);
+  const auto dequeuedAtMsStr = std::to_string(dequeuedAtMs);
+
+  detail::RedisReplyPtr reply(static_cast<redisReply *>(
+      redisCommand(c, "EVALSHA %s 0 %s %s", dequeueScriptSHA.c_str(),
+                   queue.data(), dequeuedAtMsStr.c_str())));
 
   if (!reply || reply->type == REDIS_REPLY_NIL) {
-    if (reply) freeReplyObject(reply);
     return {};
   }
 
   if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 2) {
-    if (reply) freeReplyObject(reply);
     return {};
   }
 
@@ -629,7 +723,6 @@ std::optional<Task> dequeue(redisContext *c, std::string_view queue) {
   redisReply *taskData = reply->element[1];
 
   if (taskData->type != REDIS_REPLY_ARRAY || taskData->elements < 12) {
-    freeReplyObject(reply);
     return {};
   }
 
@@ -644,42 +737,31 @@ std::optional<Task> dequeue(redisContext *c, std::string_view queue) {
             strtoull(taskMap["maxRetry"].c_str(), NULL, 0),
             strtoull(taskMap["retried"].c_str(), NULL, 0), dequeuedAtMs);
 
-  freeReplyObject(reply);
   return task;
 }
 
 std::optional<Task> dequeueScheduled(redisContext *c, std::string_view queue,
-                                     const char *getScheduledScriptSHA) {
+                                     std::string_view getScheduledScriptSHA) {
   uint64_t dequeuedAtMs =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())
           .count();
 
-  static std::string dequeueScheduledScriptSHA;
-  if (dequeueScheduledScriptSHA.empty()) {
-    redisReply *reply =
-        (redisReply *)redisCommand(c, "SCRIPT LOAD %s", dequeueScheduledScript);
-    if (reply && reply->type == REDIS_REPLY_STRING) {
-      dequeueScheduledScriptSHA = reply->str;
-      freeReplyObject(reply);
-    } else {
-      if (reply) freeReplyObject(reply);
-      throw CppqException(ErrorCode::DequeueFailed,
-                          "Failed to load dequeueScheduled script");
-    }
-  }
+  const auto &dequeueScheduledScriptSHA = detail::ensureScriptLoaded(
+      c, dequeueScheduledScript, detail::dequeueScheduledScriptCache(),
+      ErrorCode::DequeueFailed, "Failed to load dequeueScheduled script");
 
-  redisReply *reply = (redisReply *)redisCommand(
-      c, "EVALSHA %s 0 %s %lu %s", dequeueScheduledScriptSHA.c_str(),
-      queue.data(), dequeuedAtMs, getScheduledScriptSHA);
+  const auto dequeuedAtMsStr = std::to_string(dequeuedAtMs);
+
+  detail::RedisReplyPtr reply(static_cast<redisReply *>(redisCommand(
+      c, "EVALSHA %s 0 %s %s %s", dequeueScheduledScriptSHA.c_str(),
+      queue.data(), dequeuedAtMsStr.c_str(), getScheduledScriptSHA.data())));
 
   if (!reply || reply->type == REDIS_REPLY_NIL) {
-    if (reply) freeReplyObject(reply);
     return {};
   }
 
   if (reply->type != REDIS_REPLY_ARRAY || reply->elements != 2) {
-    if (reply) freeReplyObject(reply);
     return {};
   }
 
@@ -687,7 +769,6 @@ std::optional<Task> dequeueScheduled(redisContext *c, std::string_view queue,
   redisReply *taskData = reply->element[1];
 
   if (taskData->type != REDIS_REPLY_ARRAY || taskData->elements < 12) {
-    freeReplyObject(reply);
     return {};
   }
 
@@ -708,7 +789,6 @@ std::optional<Task> dequeueScheduled(redisContext *c, std::string_view queue,
             strtoull(taskMap["retried"].c_str(), NULL, 0), dequeuedAtMs,
             schedule);
 
-  freeReplyObject(reply);
   return task;
 }
 
@@ -716,11 +796,12 @@ void taskRunner(redisOptions redisOpts, Task task, std::string queue) {
   try {
     RedisConnection conn(redisOpts);
 
-    Handler handler = handlers[task.type];
-    if (!handler) {
+    auto handlerOpt = detail::getHandler(task.type);
+    if (!handlerOpt) {
       throw CppqException(ErrorCode::TaskNotFound,
                           "No handler registered for task type");
     }
+    Handler handler = *handlerOpt;
 
     std::string uuid_str = task.getUuidString();
 
@@ -729,49 +810,41 @@ void taskRunner(redisOptions redisOpts, Task task, std::string queue) {
     } catch (const std::exception &e) {
       task.retried++;
 
-      static std::string taskFailureScriptSHA;
-      if (taskFailureScriptSHA.empty()) {
-        redisReply *reply = (redisReply *)redisCommand(
-            conn.get(), "SCRIPT LOAD %s", taskFailureScript);
-        if (reply && reply->type == REDIS_REPLY_STRING) {
-          taskFailureScriptSHA = reply->str;
-          freeReplyObject(reply);
-        } else {
-          if (reply) freeReplyObject(reply);
-          throw CppqException(ErrorCode::RedisError,
-                              "Failed to load task failure script");
-        }
+      const auto &taskFailureScriptSHA = detail::ensureScriptLoaded(
+          conn.get(), taskFailureScript, detail::taskFailureScriptCache(),
+          ErrorCode::RedisError, "Failed to load task failure script");
+
+      const auto retriedStr = std::to_string(task.retried);
+      const auto maxRetryStr = std::to_string(task.maxRetry);
+
+      detail::RedisReplyPtr reply(static_cast<redisReply *>(redisCommand(
+          conn.get(), "EVALSHA %s 0 %s %s %s %s", taskFailureScriptSHA.c_str(),
+          queue.data(), uuid_str.c_str(), retriedStr.c_str(),
+          maxRetryStr.c_str())));
+
+      if (reply && reply->type == REDIS_REPLY_ERROR) {
+        throw CppqException(
+            ErrorCode::RedisError,
+            reply->str ? reply->str : "Failed to execute task failure script");
       }
-
-      redisReply *reply = (redisReply *)redisCommand(
-          conn.get(), "EVALSHA %s 0 %s %s %d %d", taskFailureScriptSHA.c_str(),
-          queue.data(), uuid_str.c_str(), task.retried, task.maxRetry);
-
-      if (reply) freeReplyObject(reply);
       return;
     }
 
     task.state = TaskState::Completed;
 
-    static std::string taskSuccessScriptSHA;
-    if (taskSuccessScriptSHA.empty()) {
-      redisReply *reply = (redisReply *)redisCommand(
-          conn.get(), "SCRIPT LOAD %s", taskSuccessScript);
-      if (reply && reply->type == REDIS_REPLY_STRING) {
-        taskSuccessScriptSHA = reply->str;
-        freeReplyObject(reply);
-      } else {
-        if (reply) freeReplyObject(reply);
-        throw CppqException(ErrorCode::RedisError,
-                            "Failed to load task success script");
-      }
-    }
+    const auto &taskSuccessScriptSHA = detail::ensureScriptLoaded(
+        conn.get(), taskSuccessScript, detail::taskSuccessScriptCache(),
+        ErrorCode::RedisError, "Failed to load task success script");
 
-    redisReply *reply = (redisReply *)redisCommand(
+    detail::RedisReplyPtr reply(static_cast<redisReply *>(redisCommand(
         conn.get(), "EVALSHA %s 0 %s %s %s", taskSuccessScriptSHA.c_str(),
-        queue.data(), uuid_str.c_str(), task.result.c_str());
+        queue.data(), uuid_str.c_str(), task.result.c_str())));
 
-    if (reply) freeReplyObject(reply);
+    if (reply && reply->type == REDIS_REPLY_ERROR) {
+      throw CppqException(
+          ErrorCode::RedisError,
+          reply->str ? reply->str : "Failed to execute task success script");
+    }
   } catch (const CppqException &e) {
     std::cerr << "Task runner error: " << e.what() << std::endl;
   }
@@ -779,24 +852,22 @@ void taskRunner(redisOptions redisOpts, Task task, std::string queue) {
 
 void recovery(redisOptions redisOpts, std::map<std::string, int> queues,
               uint64_t timeoutMs, uint64_t checkEveryMs) {
-  redisContext *c = redisConnectWithOptions(&redisOpts);
-  if (c == NULL || c->err) {
+  std::unique_ptr<redisContext, decltype(&redisFree)> ctx(
+      redisConnectWithOptions(&redisOpts), redisFree);
+  if (!ctx || ctx->err) {
     std::cerr << "Failed to connect to Redis" << std::endl;
     return;
   }
+  redisContext *c = ctx.get();
 
-  static std::string recoveryScriptSHA;
-  if (recoveryScriptSHA.empty()) {
-    redisReply *reply =
-        (redisReply *)redisCommand(c, "SCRIPT LOAD %s", recoveryScript);
-    if (reply && reply->type == REDIS_REPLY_STRING) {
-      recoveryScriptSHA = reply->str;
-      freeReplyObject(reply);
-    } else {
-      if (reply) freeReplyObject(reply);
-      std::cerr << "Failed to load recovery script" << std::endl;
-      return;
-    }
+  const std::string *recoveryScriptSHA = nullptr;
+  try {
+    recoveryScriptSHA = &detail::ensureScriptLoaded(
+        c, recoveryScript, detail::recoveryScriptCache(), ErrorCode::RedisError,
+        "Failed to load recovery script");
+  } catch (const CppqException &e) {
+    std::cerr << e.what() << std::endl;
+    return;
   }
 
   // TODO: Consider incrementing `retried` on recovery
@@ -820,11 +891,17 @@ void recovery(redisOptions redisOpts, std::map<std::string, int> queues,
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch())
                     .count())) {
-          redisReply *execReply = (redisReply *)redisCommand(
-              c, "EVALSHA %s 0 %s %s %d", recoveryScriptSHA.c_str(),
-              it->first.c_str(), uuid.c_str(),
-              scheduleReply->type == REDIS_REPLY_NIL ? 0 : 1);
-          if (execReply) freeReplyObject(execReply);
+          const auto hasScheduleStr =
+              scheduleReply->type == REDIS_REPLY_NIL ? "0" : "1";
+          detail::RedisReplyPtr execReply(
+              static_cast<redisReply *>(redisCommand(
+                  c, "EVALSHA %s 0 %s %s %s", recoveryScriptSHA->c_str(),
+                  it->first.c_str(), uuid.c_str(), hasScheduleStr)));
+          if (execReply && execReply->type == REDIS_REPLY_ERROR) {
+            std::cerr << "Recovery script error: "
+                      << (execReply->str ? execReply->str : "unknown error")
+                      << std::endl;
+          }
         }
         freeReplyObject(dequeuedAtMsReply);
         freeReplyObject(scheduleReply);
@@ -835,11 +912,13 @@ void recovery(redisOptions redisOpts, std::map<std::string, int> queues,
 }
 
 void pause(redisContext *c, std::string_view queue) {
-  redisCommand(c, "SADD cppq:queues:paused %s", queue.data());
+  detail::RedisReplyPtr(static_cast<redisReply *>(
+      redisCommand(c, "SADD cppq:queues:paused %s", queue.data())));
 }
 
 void unpause(redisContext *c, std::string_view queue) {
-  redisCommand(c, "SREM cppq:queues:paused %s", queue.data());
+  detail::RedisReplyPtr(static_cast<redisReply *>(
+      redisCommand(c, "SREM cppq:queues:paused %s", queue.data())));
 }
 
 bool isPaused(redisContext *c, std::string_view queue) noexcept {
@@ -860,15 +939,24 @@ bool isPaused(redisContext *c, std::string_view queue) noexcept {
 
 void runServer(redisOptions redisOpts, std::map<std::string, int> queues,
                uint64_t recoveryTimeoutSecond) {
-  redisContext *c = redisConnectWithOptions(&redisOpts);
-  if (c == NULL || c->err) {
+  std::unique_ptr<redisContext, decltype(&redisFree)> ctx(
+      redisConnectWithOptions(&redisOpts), redisFree);
+  if (!ctx || ctx->err) {
     std::cerr << "Failed to connect to Redis" << std::endl;
     return;
   }
+  redisContext *c = ctx.get();
 
-  redisReply *reply =
-      (redisReply *)redisCommand(c, "SCRIPT LOAD %s", getScheduledScript);
-  char *getScheduledScriptSHA = reply->str;
+  const std::string *getScheduledScriptSHA = nullptr;
+  try {
+    getScheduledScriptSHA = &detail::ensureScriptLoaded(
+        c, getScheduledScript, detail::getScheduledScriptCache(),
+        ErrorCode::RedisError, "Failed to load getScheduled script");
+  } catch (const CppqException &e) {
+    std::cerr << "runServer error: " << e.what() << std::endl;
+    return;
+  }
+  const std::string &getScheduledScriptSHARef = *getScheduledScriptSHA;
 
   std::vector<std::pair<std::string, int>> queuesVector;
   for (auto &it : queues) queuesVector.push_back(it);
@@ -878,7 +966,8 @@ void runServer(redisOptions redisOpts, std::map<std::string, int> queues,
          std::pair<std::string, int> const &b) { return a.second > b.second; });
 
   for (auto it = queuesVector.begin(); it != queuesVector.end(); it++)
-    redisCommand(c, "SADD cppq:queues %s:%d", it->first.c_str(), it->second);
+    detail::RedisReplyPtr(static_cast<redisReply *>(redisCommand(
+        c, "SADD cppq:queues %s:%d", it->first.c_str(), it->second)));
 
   thread_pool pool;
   pool.push_task(recovery, redisOpts, queues, recoveryTimeoutSecond * 1000,
@@ -891,7 +980,7 @@ void runServer(redisOptions redisOpts, std::map<std::string, int> queues,
          it != queuesVector.end(); it++) {
       if (isPaused(c, it->first)) continue;
       std::optional<Task> task;
-      task = dequeueScheduled(c, it->first, getScheduledScriptSHA);
+      task = dequeueScheduled(c, it->first, getScheduledScriptSHARef);
       if (!task.has_value()) task = dequeue(c, it->first);
       if (task.has_value()) {
         pool.push_task(taskRunner, redisOpts, task.value(), it->first);

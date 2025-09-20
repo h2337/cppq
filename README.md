@@ -1,54 +1,71 @@
 <img align="right" src="https://raw.githubusercontent.com/h2337/cppq/refs/heads/master/logo.svg">
 
-## TOC
+# cppq
 
-* [Overview](#overview)
-* [Features](#features)
-* [Quickstart](#quickstart)
-* [Example](#example)
-* [Web UI](#web-ui)
-* [CLI](#cli)
-* [License](#license)
+Distributed, Redis-backed task queue for modern C++17 applications with worker orchestration, scheduling, and tooling built-in.
+
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Quickstart](#quickstart)
+- [Example](#example)
+- [Running the Example](#running-the-example)
+- [Testing](#testing)
+- [CLI](#cli)
+- [Web UI](#web-ui)
+- [Project Layout](#project-layout)
+- [License](#license)
 
 ## Overview
+cppq is a header-only task queue that lets you enqueue work from C++ and execute it asynchronously via Redis. Workers pull jobs, run user supplied handlers, and update task state in Redis. The library focuses on predictable behaviour and ease of adoption—drop the header in your project, link a couple of dependencies, and you have a resilient queue.
 
-cppq is a simple, reliable & efficient distributed task queue for C++17.
-
-cppq is a C++ library for queueing tasks and processing them asynchronously with workers. It's backed by Redis and is designed to be scalable and easy to get started with.
-
-Highlevel overview of how cppq works:
-
-- Client puts tasks on a queue
-- Server pulls tasks off queues and starts a thread for each task
-- Tasks are processed concurrently by multiple workers
-
-Task queues are used as a mechanism to distribute work across multiple machines. A system can consist of multiple worker servers and brokers, giving way to high availability and horizontal scaling.
+### Architecture at a Glance
+- Producers enqueue `Task` objects into Redis lists and hashes.
+- `runServer` polls queues by priority, hands tasks to a thread pool, and dispatches registered handlers.
+- Recovery logic returns stuck tasks to the pending list after configurable timeouts.
+- Auxiliary tooling (CLI, web dashboard) surfaces queue state and provides pause / resume controls.
 
 ## Features
-- [x] Guaranteed at least one execution of a task
-- [x] Retries of failed tasks
-- [x] Automatic recovery of tasks in the event of a worker crash
-- [x] Low latency to add a task since writes are fast in Redis
-- [x] Queue priorities
-- [x] Scheduling of tasks
-- [ ] Periodic tasks
-- [x] Ability to pause queue to stop processing tasks from the queue
-- [x] Web UI to inspect and control queues and tasks
-- [x] CLI to inspect and control queues and tasks
+- At-least-once delivery with retry tracking and task recovery.
+- Scheduled execution (time-based today, cron support planned).
+- Queue-level priorities and pause / unpause switches.
+- Header-only API; only Redis, libuuid, and hiredis are required.
+- Companion CLI and web dashboard for operations teams.
+- Extensive Catch2 test suite covering queue flows and thread pool behaviour.
+
+## Requirements
+### Runtime
+- Redis 6.0+ available on `redis://127.0.0.1:6379` (configurable).
+
+### C++ Dependencies
+- C++17-capable compiler (`g++`, `clang++`).
+- [`hiredis`](https://github.com/redis/hiredis) client library.
+- `libuuid` for UUID generation.
+
+Install dependencies with your package manager, e.g.
+```bash
+# Debian / Ubuntu
+sudo apt install g++ libhiredis-dev uuid-dev
+
+# Arch Linux
+sudo pacman -S hiredis util-linux-libs
+
+# macOS (Homebrew)
+brew install hiredis ossp-uuid
+```
 
 ## Quickstart
-
-cppq is a header-only library with 2 dependencies: `libuuid` and `hiredis`.
-
-Just include the header: `#include "cppq.h"` and add these flags to your build `-luuid -lhiredis`.
-
-`libuuid` and `hiredis` can be installed using your distro's package manager.
-
-For Arch Linux that'd be: `sudo pacman -S hiredis util-linux-libs`
+1. Copy `cppq.hpp` into your include path.
+2. Include the header and link against hiredis, uuid, and pthread on POSIX systems:
+   ```bash
+   g++ -std=c++17 your_app.cpp -I/path/to/cppq -lhiredis -luuid -lpthread
+   ```
+3. Register task handlers before calling `runServer`.
+4. Start Redis and execute your application.
 
 ## Example
-
-```c++
+```cpp
 #include "cppq.hpp"
 
 #include <nlohmann/json.hpp>
@@ -87,18 +104,17 @@ void HandleEmailDeliveryTask(cppq::Task& task) {
   nlohmann::json r;
   r["Sent"] = true;
   task.result = r.dump();
-  return;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   // Register task types and handlers
   cppq::registerHandler(TypeEmailDelivery, &HandleEmailDeliveryTask);
 
   // Create a Redis connection for enqueuing, you can reuse this for subsequent enqueues
   redisOptions redisOpts = {0};
   REDIS_OPTIONS_SET_TCP(&redisOpts, "127.0.0.1", 6379);
-  redisContext *c = redisConnectWithOptions(&redisOpts);
-  if (c == NULL || c->err) {
+  redisContext* c = redisConnectWithOptions(&redisOpts);
+  if (c == nullptr || c->err) {
     std::cerr << "Failed to connect to Redis" << std::endl;
     return 1;
   }
@@ -114,11 +130,10 @@ int main(int argc, char *argv[]) {
   cppq::enqueue(c, task2, "high");
   // Enqueue a task on default queue to be run at exactly 1 minute from now
   cppq::enqueue(
-    c,
-    task3,
-    "default",
-    cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1))
-  );
+      c,
+      task3,
+      "default",
+      cppq::scheduleOptions(std::chrono::system_clock::now() + std::chrono::minutes(1)));
 
   // Pause queue to stop processing tasks from it
   cppq::pause(c, "default");
@@ -126,134 +141,72 @@ int main(int argc, char *argv[]) {
   cppq::unpause(c, "default");
 
   // This call will loop forever checking the pending queue
-  // and processing tasks in the thread pool.
-  // Second argument defines queues and their priorities.
-  // Third argument is time in seconds that task can be alive in active queue
   // before being pushed back to pending queue (i.e. when worker dies in middle of execution).
   cppq::runServer(redisOpts, {{"low", 5}, {"default", 10}, {"high", 20}}, 1000);
 }
 ```
 
-## Web UI
+## Running the Example
+```bash
+g++ -std=c++17 example.cpp -I. -lhiredis -luuid -lpthread -o example
+./example
+```
+Ensure Redis is running locally before executing the binary.
 
-The web UI provides a modern dashboard to monitor and control your cppq queues and tasks.
+## Testing
+The repository ships with Catch2 tests that exercise queue operations, scheduling, recovery, pause logic, and the internal thread pool.
 
-### Features
-- Real-time queue monitoring with auto-refresh
-- Queue statistics and performance metrics visualization
-- Task inspection by state (pending, scheduled, active, completed, failed)
-- Queue pause/unpause functionality
-- Task search and filtering
-- Export queue and task data to CSV
-- Dark mode support
-- Responsive design
-
-### Running the Web UI
-
-1. Navigate to the web directory:
+1. Install dependencies (besides hiredis/uuid you also need Catch2 headers and nlohmann-json).
+2. Start a local Redis instance: `redis-server --port 6379`.
+3. Build the tests:
    ```bash
-   cd web
+   ./build_tests.sh
+   ```
+4. Run them:
+   ```bash
+   ./tests
    ```
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-4. Open http://localhost:3000 in your browser
-
-5. Connect to your Redis instance (default: `redis://localhost:6379`)
-
-### Technology Stack
-- **Frontend**: Next.js 15, React 19, TypeScript
-- **Styling**: Tailwind CSS v4
-- **Backend**: Next.js API routes
-- **Database**: Redis (via node-redis)
-
-For detailed documentation, see [web/README.md](web/README.md).
+The script emits useful tags such as `[queue]`, `[recovery]`, or `[threadpool]` that you can pass to Catch2 to focus on specific areas.
 
 ## CLI
-
-A modern, feature-rich command-line interface for managing cppq queues and tasks.
-
-### Features
-- Modern CLI framework with intuitive commands
-- Rich formatted output with color support
-- Multiple output formats (table, JSON, pretty-print)
-- Configuration file and environment variable support
-- Comprehensive error handling and logging
-- Type-safe with full type hints
-
-### Quick Start
-
-1. Navigate to the CLI directory:
-   ```bash
-   cd cli
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip3 install -r requirements.txt
-   ```
-
-3. Run the CLI:
-   ```bash
-   python3 main.py --help
-   ```
-
-### Usage Examples
+The `cli/` directory contains a Python-based management tool built with Click, Rich, and Redis-py.
 
 ```bash
-# List all queues with colored status
-python3 main.py queues
-
-# Get queue statistics
-python3 main.py stats myqueue
-
-# List tasks in different states
-python3 main.py list myqueue pending
-python3 main.py list myqueue active --limit 10
-
-# Get task details
-python3 main.py task myqueue 123e4567-e89b-12d3-a456-426614174000
-
-# Pause/unpause queues
-python3 main.py pause myqueue
-python3 main.py unpause myqueue
-
-# Different output formats
+cd cli
+pip install -r requirements.txt
+python3 main.py --help
 python3 main.py queues --format json
-python3 main.py stats myqueue --format table
-
-# Enable debug logging
-python3 main.py --debug queues
-
-# Use custom Redis URI
-python3 main.py --redis-uri redis://myserver:6379 queues
 ```
 
-### Configuration
+Key capabilities:
+- Inspect queues, task states, and statistics.
+- Pause or resume queues.
+- Dump task metadata for debugging.
+- Load configuration from environment variables, CLI flags, or `~/.config/cppq/config.json`.
 
-The CLI supports configuration through:
-- Command-line arguments (highest priority)
-- Environment variables (e.g., `REDIS_URI`, `CPPQ_OUTPUT_FORMAT`)
-- Configuration file (`~/.config/cppq/config.json`)
-- Default values
+For deeper usage details see [`cli/README.md`](cli/README.md).
 
-Create a configuration file:
+## Web UI
+A Next.js dashboard lives in `web/`. It offers real-time monitoring, task inspection, and queue controls via a modern interface.
+
 ```bash
-python3 main.py config --create
+cd web
+npm install
+npm run dev
 ```
+Visit http://localhost:3000/ and connect to your Redis instance (default `redis://localhost:6379`). Read the dedicated [web/README.md](web/README.md) for screenshots, API routes, and deployment hints.
 
-For detailed documentation, see [cli/README.md](cli/README.md).
+## Project Layout
+```
+.
+├── cppq.hpp          # Header-only queue library
+├── example.cpp       # Minimal producer/worker demonstration
+├── tests.cpp         # Catch2 regression suite
+├── build_tests.sh    # Helper script for building tests
+├── cli/              # Python CLI for operations
+└── web/              # Next.js dashboard
+```
 
 ## License
-
-cppq is MIT-licensed.
-
-Thread pooling functionality is retrofitted from https://github.com/bshoshany/thread-pool
+cppq is released under the MIT License. The bundled thread pool implementation is adapted from https://github.com/bshoshany/thread-pool.
