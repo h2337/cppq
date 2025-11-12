@@ -23,7 +23,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Header-only library definition
 # ------------------------------------------------------------
 # This creates an INTERFACE library — no compiled code,
-# just headers and interface properties (include dirs, etc.)
+# just header cppq.hpp
 add_library(cppq INTERFACE)
 
 # Make headers in the project root available to anything
@@ -50,6 +50,9 @@ pkg_check_modules(HIREDIS REQUIRED hiredis)
 # Find Catch2 v3 (C++ testing framework)
 find_package(Catch2 3 REQUIRED)
 
+# Add nlohmann_json dependency for tests
+find_package(nlohmann_json REQUIRED)
+
 # ------------------------------------------------------------
 # Build the unit test executable
 # ------------------------------------------------------------
@@ -69,6 +72,7 @@ target_link_libraries(tests PRIVATE
         ${UUID_LIBRARIES}    # libuuid
         ${HIREDIS_LIBRARIES} # hiredis
         Catch2::Catch2WithMain # Catch2 test runner
+        nlohmann_json::nlohmann_json # json dep
 )
 
 # ------------------------------------------------------------
