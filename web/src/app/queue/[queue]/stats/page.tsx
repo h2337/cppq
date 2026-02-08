@@ -41,7 +41,9 @@ export default function QueueStatsPage({
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`/api/queue/${resolvedParams.queue}/stats`);
+      const response = await fetch(
+        `/api/queue/${encodeURIComponent(queueName)}/stats`,
+      );
       if (!response.ok) throw new Error('Failed to fetch stats');
       
       const data = await response.json();
@@ -61,7 +63,7 @@ export default function QueueStatsPage({
       const interval = setInterval(fetchStats, refreshInterval);
       return () => clearInterval(interval);
     }
-  }, [refreshInterval, resolvedParams.queue]);
+  }, [refreshInterval, queueName]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -76,7 +78,7 @@ export default function QueueStatsPage({
             Queue Statistics: {getBaseQueueName(queueName)}
           </h2>
           <Link
-            href={`/queue/${resolvedParams.queue}`}
+            href={`/queue/${encodeURIComponent(queueName)}`}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
           >
             View Tasks

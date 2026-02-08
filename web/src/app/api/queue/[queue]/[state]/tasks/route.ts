@@ -6,8 +6,13 @@ export async function GET(
   { params }: { params: Promise<{ queue: string; state: string }> }
 ) {
   try {
+    const sessionId = request.cookies.get('cppq_session')?.value;
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Redis not connected' }, { status: 500 });
+    }
+
     const { queue, state } = await params;
-    const tasks = await getTasks(queue, state);
+    const tasks = await getTasks(queue, state, sessionId);
     return NextResponse.json(tasks);
   } catch (error) {
     return NextResponse.json({ 

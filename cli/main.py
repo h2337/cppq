@@ -5,18 +5,16 @@ cppq CLI - A modern Redis queue management command-line interface.
 
 import sys
 import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 
 import click
 import redis
 from rich.console import Console
 from rich.table import Table
-from rich.pretty import pprint
 from rich import print as rprint
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-import tabulate
 
 from config import ConfigManager, CLIConfig
 from logger import setup_logging, get_logger
@@ -31,7 +29,7 @@ class QueueInfo(BaseModel):
     """Model for queue information."""
 
     name: str
-    priority: str
+    priority: int
     paused: bool
 
 
@@ -89,6 +87,14 @@ class CppqCLI:
             }
         return value
 
+    @staticmethod
+    def parse_queue_entry(queue_str: str) -> Tuple[str, int]:
+        """Parse a queue entry like 'name:10' into (name, priority)."""
+        name, sep, suffix = queue_str.rpartition(":")
+        if sep and suffix.isdigit():
+            return name, int(suffix)
+        return queue_str, 0
+
     def get_queues(self) -> List[QueueInfo]:
         """Retrieve all queues with their metadata."""
         queue_keys = self.client.smembers("cppq:queues")
@@ -96,14 +102,12 @@ class CppqCLI:
 
         for queue_key in queue_keys:
             queue_str = queue_key.decode("utf-8")
-            parts = queue_str.split(":")
-            name = parts[0]
-            priority = parts[1] if len(parts) > 1 else "0"
+            name, priority = self.parse_queue_entry(queue_str)
             paused = self.client.sismember("cppq:queues:paused", name)
 
             queues.append(QueueInfo(name=name, priority=priority, paused=bool(paused)))
 
-        return sorted(queues, key=lambda q: (q.name, q.priority))
+        return sorted(queues, key=lambda q: (-q.priority, q.name))
 
     def get_queue_stats(self, queue_name: str) -> QueueStats:
         """Get statistics for a specific queue."""

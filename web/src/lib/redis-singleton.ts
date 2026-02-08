@@ -2,62 +2,103 @@ import { createClient } from 'redis';
 
 export type RedisClient = ReturnType<typeof createClient>;
 
-declare global {
-  var redis: RedisClient | undefined;
-  var redisUrl: string | undefined;
+interface RedisSession {
+  uri: string;
+  client: RedisClient;
 }
 
-export async function getRedisClient(): Promise<RedisClient | null> {
-  if (!global.redisUrl) {
+declare global {
+  var redisSessions: Map<string, RedisSession> | undefined;
+}
+
+function getSessionStore(): Map<string, RedisSession> {
+  if (!global.redisSessions) {
+    global.redisSessions = new Map<string, RedisSession>();
+  }
+  return global.redisSessions;
+}
+
+async function closeClient(client: RedisClient): Promise<void> {
+  if (!client.isOpen) {
+    return;
+  }
+
+  try {
+    await client.quit();
+  } catch {
+    try {
+      client.disconnect();
+    } catch {
+      // Best-effort cleanup; ignore disconnect errors.
+    }
+  }
+}
+
+export async function getRedisClient(sessionId: string): Promise<RedisClient | null> {
+  if (!sessionId) {
     return null;
   }
 
-  if (!global.redis) {
-    global.redis = createClient({
-      url: global.redisUrl
-    });
-    
-    global.redis.on('error', (err) => {
-      console.error('Redis Client Error', err);
-    });
-    
-    await global.redis.connect();
+  const session = getSessionStore().get(sessionId);
+  if (!session) {
+    return null;
   }
-  
-  // Check if still connected
-  if (!global.redis.isReady) {
+
+  if (!session.client.isReady) {
     try {
-      await global.redis.connect();
+      if (!session.client.isOpen) {
+        await session.client.connect();
+      } else {
+        await session.client.ping();
+      }
     } catch (err) {
-      console.error('Failed to reconnect to Redis:', err);
+      console.error(`Failed to reconnect Redis for session ${sessionId}:`, err);
       return null;
     }
   }
-  
-  return global.redis;
+
+  return session.client;
 }
 
-export async function connectRedis(uri: string): Promise<void> {
-  // Store the URL globally
-  global.redisUrl = uri;
-  
-  // Disconnect existing client if any
-  if (global.redis) {
-    await global.redis.disconnect();
-    global.redis = undefined;
+export async function connectRedis(sessionId: string, uri: string): Promise<void> {
+  if (!sessionId) {
+    throw new Error('Missing session identifier');
   }
-  
-  // Create new connection
-  const client = await getRedisClient();
-  if (!client) {
-    throw new Error('Failed to connect to Redis');
+
+  const sessions = getSessionStore();
+  const existing = sessions.get(sessionId);
+  if (existing && existing.uri === uri) {
+    if (!existing.client.isReady && !existing.client.isOpen) {
+      await existing.client.connect();
+    }
+    return;
   }
+
+  if (existing) {
+    await closeClient(existing.client);
+    sessions.delete(sessionId);
+  }
+
+  const client = createClient({ url: uri });
+  client.on('error', (err) => {
+    console.error(`Redis Client Error [session=${sessionId}]`, err);
+  });
+
+  await client.connect();
+  sessions.set(sessionId, { uri, client });
 }
 
-export async function disconnectRedis(): Promise<void> {
-  if (global.redis) {
-    await global.redis.disconnect();
-    global.redis = undefined;
-    global.redisUrl = undefined;
+export async function disconnectRedis(sessionId: string): Promise<void> {
+  if (!sessionId) {
+    return;
   }
+
+  const sessions = getSessionStore();
+  const existing = sessions.get(sessionId);
+  if (!existing) {
+    return;
+  }
+
+  await closeClient(existing.client);
+  sessions.delete(sessionId);
 }

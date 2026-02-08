@@ -36,14 +36,17 @@ class RedisTestFixture {
   ~RedisTestFixture() {
     // Clean up any test queues
     if (ctx && ctx->err == 0) {
-      auto reply = (redisReply*)redisCommand(ctx.get(), "KEYS %s*",
-                                             test_queue_prefix.c_str());
+      const std::string key_pattern = "cppq:" + test_queue_prefix + "*";
+      auto reply =
+          (redisReply*)redisCommand(ctx.get(), "KEYS %s", key_pattern.c_str());
       if (reply && reply->type == REDIS_REPLY_ARRAY) {
         for (size_t i = 0; i < reply->elements; i++) {
-          redisCommand(ctx.get(), "DEL %s", reply->element[i]->str);
+          auto* del_reply = (redisReply*)redisCommand(ctx.get(), "DEL %s",
+                                                      reply->element[i]->str);
+          if (del_reply) freeReplyObject(del_reply);
         }
-        freeReplyObject(reply);
       }
+      if (reply) freeReplyObject(reply);
     }
   }
 
@@ -282,15 +285,17 @@ TEST_CASE_METHOD(RedisTestFixture, "Task recovery mechanism", "[recovery]") {
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
     std::map<std::string, int> queues = {{queue_name, 1}};
+    std::atomic<bool> stop_recovery{false};
 
-    std::thread recovery_thread(
-        [options, queues]() { cppq::recovery(options, queues, 60, 100); });
+    std::thread recovery_thread([options, queues, &stop_recovery]() {
+      cppq::recovery(options, queues, 60000, 100, &stop_recovery);
+    });
 
     // Small delay to allow recovery to run
     std::this_thread::sleep_for(500ms);
 
-    // Detach the thread (it will run forever but we're done testing)
-    recovery_thread.detach();
+    stop_recovery = true;
+    recovery_thread.join();
 
     // Task should be back in pending queue
     auto reply = (redisReply*)redisCommand(ctx.get(), "LLEN cppq:%s:pending",
@@ -341,15 +346,17 @@ TEST_CASE_METHOD(RedisTestFixture, "Task recovery mechanism", "[recovery]") {
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, "127.0.0.1", 6379);
     std::map<std::string, int> queues = {{queue_name, 1}};
+    std::atomic<bool> stop_recovery{false};
 
-    std::thread recovery_thread(
-        [options, queues]() { cppq::recovery(options, queues, 60, 100); });
+    std::thread recovery_thread([options, queues, &stop_recovery]() {
+      cppq::recovery(options, queues, 60000, 100, &stop_recovery);
+    });
 
     // Small delay to allow recovery to run at least once
     std::this_thread::sleep_for(150ms);
 
-    // Detach the thread (it will run forever but we're done testing)
-    recovery_thread.detach();
+    stop_recovery = true;
+    recovery_thread.join();
 
     // Task should still be in active queue
     std::string active_queue = "cppq:" + queue_name + ":active";

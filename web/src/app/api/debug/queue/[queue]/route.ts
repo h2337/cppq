@@ -7,9 +7,14 @@ export async function GET(
   { params }: { params: Promise<{ queue: string }> }
 ) {
   try {
+    const sessionId = request.cookies.get('cppq_session')?.value;
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Redis not connected' }, { status: 500 });
+    }
+
     const { queue } = await params;
     const baseQueue = getBaseQueueName(queue);
-    const client = await getRedisClient();
+    const client = await getRedisClient(sessionId);
     
     if (!client) {
       return NextResponse.json({ error: 'Redis not connected' }, { status: 500 });

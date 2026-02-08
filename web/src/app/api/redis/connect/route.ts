@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectRedis } from '@/lib/redis';
 import { getRedisClient } from '@/lib/redis-singleton';
+import { randomUUID } from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,10 +10,18 @@ export async function POST(request: NextRequest) {
     if (!uri) {
       return NextResponse.json({ error: 'Redis URI is required' }, { status: 400 });
     }
-    
-    await connectRedis(uri);
-    
-    return NextResponse.json({ connected: true });
+
+    const sessionId = request.cookies.get('cppq_session')?.value ?? randomUUID();
+    await connectRedis(sessionId, uri);
+
+    const response = NextResponse.json({ connected: true });
+    response.cookies.set('cppq_session', sessionId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    return response;
   } catch (error) {
     return NextResponse.json({ 
       connected: false, 
@@ -21,8 +30,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
-  const client = await getRedisClient();
+export async function GET(request: NextRequest) {
+  const sessionId = request.cookies.get('cppq_session')?.value;
+  const client = sessionId ? await getRedisClient(sessionId) : null;
   const connected = client !== null && client.isReady;
   
   return NextResponse.json({ connected });

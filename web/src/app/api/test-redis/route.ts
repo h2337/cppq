@@ -1,10 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis-singleton';
 import { getBaseQueueName } from '@/lib/queue-utils';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const client = await getRedisClient();
+    const sessionId = request.cookies.get('cppq_session')?.value;
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Redis not connected' }, { status: 500 });
+    }
+
+    const client = await getRedisClient(sessionId);
     if (!client) {
       return NextResponse.json({ error: 'Redis not connected' }, { status: 500 });
     }

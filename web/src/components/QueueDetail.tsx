@@ -23,7 +23,9 @@ export default function QueueDetail({ queueName, refreshInterval }: QueueDetailP
 
   const fetchTasks = async () => {
     try {
-      const response = await fetch(`/api/queue/${queueName}/${activeTab}/tasks`);
+      const response = await fetch(
+        `/api/queue/${encodeURIComponent(queueName)}/${activeTab}/tasks`,
+      );
       if (!response.ok) throw new Error('Failed to fetch tasks');
       
       const data = await response.json();
@@ -48,7 +50,9 @@ export default function QueueDetail({ queueName, refreshInterval }: QueueDetailP
 
   const formatDateTime = (timestamp?: string) => {
     if (!timestamp) return '-';
-    return new Date(parseInt(timestamp) * 1000).toLocaleString();
+    const timestampMs = Number(timestamp);
+    if (!Number.isFinite(timestampMs) || timestampMs <= 0) return '-';
+    return new Date(timestampMs).toLocaleString();
   };
 
   const filteredAndSortedTasks = useMemo(() => {
@@ -64,10 +68,11 @@ export default function QueueDetail({ queueName, refreshInterval }: QueueDetailP
     }
     
     // Sort tasks
-    return filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const aValue = a[sortField] || '';
       const bValue = b[sortField] || '';
       
+      if (aValue === bValue) return 0;
       if (sortDirection === 'asc') {
         return aValue > bValue ? 1 : -1;
       } else {
